@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════════════════════════════════════╗
+ ║ ⚠  approval required · SAFE_APPROVAL_DESCRIPTION                           ║
+ ║  SAFE_COMMAND_01_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_02_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_03_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+
+
+
+
+
+
+
+
+
+ ─ (´･_･`) reflecting…    │ SAFE MODEL                               ─ SAFE_CWD

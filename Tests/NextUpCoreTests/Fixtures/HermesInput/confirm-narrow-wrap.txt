@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════╗
+ ║ ? SAFE_CONFIRM_TITLE_01                    ║
+ ║ SAFE_CONFIRM_TITLE_02                      ║
+ ║ SAFE_CONFIRM_TITLE_03                      ║
+ ║ SAFE_CONFIRM_TITLE_04                      ║
+ ║ SAFE_CONFIRM_TITLE_05                      ║
+ ║ SAFE_CONFIRM_TITLE_06                      ║
+ ║ SAFE_CONFIRM_TITLE_07                      ║
+ ║ SAFE_CONFIRM_TITLE_08                      ║
+ ║  SAFE_CONFIRM_DETAIL_01 SAFE_CONFIRM_DETA… ║
+ ║ ▸ SAFE_CANCEL                              ║
+ ║   SAFE_CONFIRM                             ║
+ ║ ↑/↓ select · Enter confirm · Y/N quick ·   ║
+ ║ Esc cancel                                 ║
+ ╚════════════════════════════════════════════╝
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL    ─ SAFE_CWD

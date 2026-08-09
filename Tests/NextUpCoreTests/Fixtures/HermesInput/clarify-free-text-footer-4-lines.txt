@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ask
+ SAFE_QUESTION_NARROW
+ > █
+ Enter send · Esc
+ cancel · Cmd+C copy ·
+ Cmd+V paste · Ctrl+C
+ cancel
+
+
+
+ ─ SAFE_STATUS_READY │

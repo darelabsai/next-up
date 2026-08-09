@@ -1,0 +1,80 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════════════════════════════════════╗
+ ║ ⚠  approval required · SAFE_APPROVAL_DESCRIPTION                           ║
+ ║  SAFE_COMMAND_REPRODUCTION                                                 ║
+ ║ ▸ 1. Allow once                                                            ║
+ ║   2. Allow this session                                                    ║
+ ║   3. Always allow                                                          ║
+ ║   4. Deny                                                                  ║
+ ║ ↑/↓ select · Enter confirm · 1-4 quick pick · Esc/Ctrl+C deny              ║
+ ╚════════════════════════════════════════════════════════════════════════════╝
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL                                    ─ SAFE_CWD
+ SAFE_PROFILE ❯ SAFE_READY_COMPOSER

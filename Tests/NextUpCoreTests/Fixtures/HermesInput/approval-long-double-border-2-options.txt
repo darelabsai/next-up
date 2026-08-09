@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════════════════════════════════════╗
+ ║ ⚠  approval required · SAFE_APPROVAL_DESCRIPTION                           ║
+ ║  SAFE_COMMAND_01_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_02_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_03_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_04_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_05_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_06_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_07_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_08_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_09_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  SAFE_COMMAND_10_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  … +4 more lines (full text above)                                         ║
+ ║ ▸ 1. Allow once                                                            ║
+ ║   2. Deny                                                                  ║
+ ║ ↑/↓ select · Enter confirm · 1-2 quick pick · Esc/Ctrl+C deny              ║
+ ╚════════════════════════════════════════════════════════════════════════════╝
+
+
+ queued (7) · editing 6 · Ctrl+X delete · Esc cancel
+  …
+   5. SAFE_QUEUE_05
+ ▸ 6. SAFE_QUEUE_06
+   7. SAFE_QUEUE_07
+ 1 background task running
+ ↳ SAFE_STICKY_PROMPT
+
+ ─ (´･_･`) reflecting…    │ SAFE MODEL                               ─ SAFE_CWD

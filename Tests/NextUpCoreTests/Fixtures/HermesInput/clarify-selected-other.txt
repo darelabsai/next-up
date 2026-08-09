@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ask SAFE_QUESTION_SELECTED_OTHER
+   1. SAFE_CHOICE_A
+   2. SAFE_CHOICE_B
+   3. SAFE_CHOICE_C
+ ▸ 4. Other (type your answer)
+ ↑/↓ select · Enter confirm · 1-3 quick pick · Esc/Ctrl+C
+ cancel
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL                    ─ SAFE_CWD

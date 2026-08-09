@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════════════════════╗
+ ║ ⚠  approval required · SAFE_APPROVAL_DESCRIPTION           ║
+ ║  SAFE_COMMAND_01_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  XXXXXXXXXXXXXXXX                                          ║
+ ║  SAFE_COMMAND_02_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  XXXXXXXXXXXXXXXX                                          ║
+ ║  SAFE_COMMAND_03_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  ║
+ ║  XXXXXXXXXXXXXXXX                                          ║
+ ║ ▸ 1. Allow once                                            ║
+ ║   2. Allow this session                                    ║
+ ║   3. Deny                                                  ║
+ ║ ↑/↓ select · Enter confirm · 1-3 quick pick · Esc/Ctrl+C   ║
+ ║ deny                                                       ║
+ ╚════════════════════════════════════════════════════════════╝
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL                    ─ SAFE_CWD

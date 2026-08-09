@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ╔════════════════════════════════════════════════════════════╗
+ ║ ⚠  approval required · SAFE_DESCRIPTION_01                 ║
+ ║ SAFE_DESCRIPTION_02 SAFE_DESCRIPTION_03                    ║
+ ║ SAFE_DESCRIPTION_04 SAFE_DESCRIPTION_05                    ║
+ ║ SAFE_DESCRIPTION_06 SAFE_DESCRIPTION_07                    ║
+ ║ SAFE_DESCRIPTION_08 SAFE_DESCRIPTION_09                    ║
+ ║ SAFE_DESCRIPTION_10 SAFE_DESCRIPTION_11                    ║
+ ║ SAFE_DESCRIPTION_12 SAFE_DESCRIPTION_13                    ║
+ ║ SAFE_DESCRIPTION_14 SAFE_DESCRIPTION_15                    ║
+ ║ SAFE_DESCRIPTION_16 SAFE_DESCRIPTION_17                    ║
+ ║ SAFE_DESCRIPTION_18 SAFE_DESCRIPTION_19                    ║
+ ║ SAFE_DESCRIPTION_20 SAFE_DESCRIPTION_21                    ║
+ ║ SAFE_DESCRIPTION_22 SAFE_DESCRIPTION_23                    ║
+ ║ SAFE_DESCRIPTION_24 SAFE_DESCRIPTION_25                    ║
+ ║ SAFE_DESCRIPTION_26 SAFE_DESCRIPTION_27                    ║
+ ║  SAFE_COMMAND_DESC_14                                      ║
+ ║ ▸ 1. Allow once                                            ║
+ ║   2. Allow this session                                    ║
+ ║   3. Deny                                                  ║
+ ║ ↑/↓ select · Enter confirm · 1-3 quick pick · Esc/Ctrl+C   ║
+ ║ deny                                                       ║
+ ╚════════════════════════════════════════════════════════════╝
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL                    ─ SAFE_CWD

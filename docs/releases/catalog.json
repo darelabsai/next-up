@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "releases": [
+    {
+      "version": "1.1.0",
+      "date": "2026-08-08",
+      "build": 2,
+      "status": "live-accepted",
+      "source_commit": "9c35814b6ecbb450790a746e19d29290c1c2e47d",
+      "artifact_sha256": "5419d2336c1b44a058e1b82f7080ae91d49b2ed392f9f72f3f3d34eb1420b1fa",
+      "signing_mode": "adhoc",
+      "deployment_identity": "ai.darelabs.nextup",
+      "predecessor": "1.0.0",
+      "rollback_target": "1.0.0",
+      "historical_bundle_version": null,
+      "historical_bundle_build": null,
+      "record": "docs/releases/1.1.0.md"
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-08-08",
+      "build": 1,
+      "status": "live-accepted",
+      "source_commit": "bd2d83322505e5e98b76eda070d1cb9c5987e5bf",
+      "artifact_sha256": "57c2399388cdd6b13b35146e087bcf9c62afbbb66360c90ceedfb332b6de7f44",
+      "signing_mode": "adhoc",
+      "deployment_identity": "ai.darelabs.nextup",
+      "predecessor": null,
+      "rollback_target": null,
+      "historical_bundle_version": "0.1.0",
+      "historical_bundle_build": 1,
+      "record": "docs/releases/1.0.0.md"
+    }
+  ]
+}

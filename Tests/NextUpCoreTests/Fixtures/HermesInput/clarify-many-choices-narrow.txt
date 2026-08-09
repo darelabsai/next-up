@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ask SAFE_QUESTION_MANY
+ ▸ 1. SAFE_CHOICE_1
+   2. SAFE_CHOICE_2
+   3. SAFE_CHOICE_3
+   4. SAFE_CHOICE_4
+   5. SAFE_CHOICE_5
+   6. SAFE_CHOICE_6
+   7. Other (type your answer)
+ ↑/↓ select · Enter confirm · 1-6 quick
+  pick · Esc/Ctrl+C cancel
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MOD ─ SAFE…

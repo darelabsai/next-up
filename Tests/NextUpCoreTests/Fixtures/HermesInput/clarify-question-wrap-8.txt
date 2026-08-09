@@ -1,0 +1,80 @@
+ ·  SAFE_TRANSCRIPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ask SAFE_QUESTION_01 SAFE_QUESTION_02
+ SAFE_QUESTION_03 SAFE_QUESTION_04
+ SAFE_QUESTION_05 SAFE_QUESTION_06
+ SAFE_QUESTION_07 SAFE_QUESTION_08
+ SAFE_QUESTION_09 SAFE_QUESTION_10
+ SAFE_QUESTION_11 SAFE_QUESTION_12
+ SAFE_QUESTION_13 SAFE_QUESTION_14
+ SAFE_QUESTION_15
+ > █
+ Enter send · Esc cancel · Cmd+C copy · Cmd+V
+ paste · Ctrl+C cancel
+
+
+
+ ─ SAFE_STATUS_READY │ SAFE MODEL    ─ SAFE_CWD
