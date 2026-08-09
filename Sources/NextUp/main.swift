@@ -169,18 +169,82 @@ private enum CommandProbeError: Error {
 }
 
 if CommandLine.arguments.contains("--navigation-probe") {
+    let target: CMUXNavigationTarget
     do {
-        let target = try JSONDecoder().decode(
+        target = try JSONDecoder().decode(
             CMUXNavigationTarget.self,
             from: BoundedProbeInput.read(maximumBytes: 4_096)
         )
-        let result = CMUXNavigationExecutor().navigate(to: target)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        print(String(decoding: try encoder.encode(result), as: UTF8.self))
-        exit(EXIT_SUCCESS)
     } catch {
         fputs("navigation probe failed\n", stderr)
+        exit(EXIT_FAILURE)
+    }
+    Task { @MainActor in
+        do {
+            let result = await CMUXNotificationNavigator().navigate(to: target)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            print(String(decoding: try encoder.encode(result), as: UTF8.self))
+            exit(EXIT_SUCCESS)
+        } catch {
+            fputs("navigation probe failed\n", stderr)
+            exit(EXIT_FAILURE)
+        }
+    }
+    RunLoop.main.run()
+}
+
+if CommandLine.arguments.contains("--alert-list-probe") {
+    do {
+        let input = try BoundedProbeInput.read(maximumBytes: 4_096)
+        guard let laneID = String(data: input, encoding: .utf8)?
+            .trimmingCharacters(in: .newlines) else {
+            throw CommandProbeError.invalidUTF8
+        }
+        let base = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("NextUp", isDirectory: true)
+        let payload = try FocusedAttentionProbe.alertList(
+            laneID: laneID,
+            transactionStateURL: base.appendingPathComponent("watcher-transaction.json")
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        print(String(decoding: try encoder.encode(payload), as: UTF8.self))
+        exit(EXIT_SUCCESS)
+    } catch {
+        fputs("alert list probe failed\n", stderr)
+        exit(EXIT_FAILURE)
+    }
+}
+
+if CommandLine.arguments.contains("--focused-lane-probe") {
+    do {
+        let request = try JSONDecoder().decode(
+            FocusedLaneProbeRequest.self,
+            from: BoundedProbeInput.read(maximumBytes: 8_192)
+        )
+        let observation = CMUXClient().acquireFreshFocus()
+        let base = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("NextUp", isDirectory: true)
+        let transactionState = FocusedAttentionProbe.persistedTransactionState(
+            at: base.appendingPathComponent("watcher-transaction.json")
+        )
+        let payload = FocusedAttentionProbe.evaluate(
+            request: request,
+            observation: observation,
+            transactionState: transactionState,
+            reconciledAt: Date()
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        print(String(decoding: try encoder.encode(payload), as: UTF8.self))
+        exit(EXIT_SUCCESS)
+    } catch {
+        fputs("focused lane probe failed\n", stderr)
         exit(EXIT_FAILURE)
     }
 }
@@ -198,7 +262,7 @@ if CommandLine.arguments.contains("--pending-probe") {
         )[0]
         let payload = try PendingStateProbe.read(
             laneID: laneID,
-            stateURL: support.appendingPathComponent("NextUp/state.json")
+            transactionStateURL: support.appendingPathComponent("NextUp/watcher-transaction.json")
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

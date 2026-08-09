@@ -12,19 +12,20 @@ enum PendingStateProbe {
         case emptyLaneID
     }
 
-    static func read(laneID: String, stateURL: URL) throws -> Payload {
+    static func read(laneID: String, transactionStateURL: URL) throws -> Payload {
         guard !laneID.isEmpty else { throw ProbeError.emptyLaneID }
-        guard FileManager.default.fileExists(atPath: stateURL.path) else {
+        guard FileManager.default.fileExists(atPath: transactionStateURL.path) else {
             return Payload(
                 pending: false,
                 announcementCount: nil,
                 lastAnnouncedAtUnixMilliseconds: nil
             )
         }
-        let state = try JSONDecoder().decode(
-            LaneMonitorState.self,
-            from: Data(contentsOf: stateURL)
+        let transaction = try JSONDecoder().decode(
+            WatcherTransactionState.self,
+            from: Data(contentsOf: transactionStateURL)
         )
+        let state = transaction.laneMonitorState
         guard let completion = state.pending.first(where: { $0.laneID == laneID }) else {
             return Payload(
                 pending: false,

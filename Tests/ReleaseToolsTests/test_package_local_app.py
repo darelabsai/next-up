@@ -56,8 +56,8 @@ class PackageLocalAppTests(unittest.TestCase):
         self.assertTrue(plist_path.is_file())
         with plist_path.open("rb") as handle:
             plist = plistlib.load(handle)
-        self.assertEqual(plist["CFBundleShortVersionString"], "1.1.0")
-        self.assertEqual(plist["CFBundleVersion"], "2")
+        self.assertEqual(plist["CFBundleShortVersionString"], "1.2.0")
+        self.assertEqual(plist["CFBundleVersion"], "3")
         packaged_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
         self.assertEqual(packaged_hash, self.release_hash_after_normal)
         signature = subprocess.run(
@@ -72,8 +72,8 @@ class PackageLocalAppTests(unittest.TestCase):
         self.assertNotIn("SENTINEL-MUST-NOT-LEAK", self.normal.stdout + self.normal.stderr)
         lines = self.normal.stdout.splitlines()
         self.assertEqual(len(lines), 3)
-        self.assertEqual(lines[0], "version=1.1.0")
-        self.assertEqual(lines[1], "build=2")
+        self.assertEqual(lines[0], "version=1.2.0")
+        self.assertEqual(lines[1], "build=3")
         self.assertRegex(lines[2], r"^executable_sha256=[0-9a-f]{64}$")
 
     def test_relative_destination_is_rejected_without_creation(self) -> None:
@@ -252,6 +252,7 @@ class PackageLocalAppTests(unittest.TestCase):
             "docs/releases/README.md",
             "docs/releases/1.0.0.md",
             "docs/releases/1.1.0.md",
+            "docs/releases/1.2.0.md",
         ]:
             source = ROOT / relative
             destination = fixture / relative

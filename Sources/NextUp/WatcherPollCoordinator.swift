@@ -161,7 +161,11 @@ struct WatcherPollCoordinator: Sendable {
             readFailures: result.readFailures,
             quarantinedLaneIDs: Set(prior.filter { old in
                 quarantined.contains(where: { matches($0, lane: old) })
-            }.map(\.id))
+            }.map(\.id)),
+            pollKind: result.pollKind,
+            focusEligibility: result.focusEligibility,
+            focusObservation: result.focusObservation,
+            preEnrichmentFocusPlan: result.preEnrichmentFocusPlan
         )
     }
 
@@ -233,6 +237,7 @@ struct WatcherPollCoordinator: Sendable {
 final class WatcherPollingRuntime {
     typealias InventoryFetcher = @Sendable () throws -> [WorkspaceInventoryRecord]
     typealias PollFetcher = @Sendable (WorkspaceSelection) throws -> CMUXPollResult
+    typealias FreshFocusAcquirer = @Sendable () -> CMUXFreshFocusAcquisition?
     typealias RetryScheduler = @MainActor (
         TimeInterval,
         @escaping @MainActor @Sendable () -> Void
@@ -243,6 +248,9 @@ final class WatcherPollingRuntime {
     private let fetchPoll: PollFetcher
     private let selection: @MainActor () -> WorkspaceSelection
     private let priorSnapshots: @MainActor () -> [LaneSnapshot]
+    private let focusEligibility: @MainActor () -> [FocusAlertIdentity]
+    private let acquireFreshFocus: FreshFocusAcquirer
+    private let preEnrichmentReconcile: @MainActor (CMUXPollResult) -> CMUXPollResult
     private let apply: @MainActor (CMUXPollResult) async -> [LaneSnapshot]
     private let failed: @MainActor (String) -> Void
     private let scheduleRetry: RetryScheduler
@@ -257,6 +265,9 @@ final class WatcherPollingRuntime {
         fetchPoll: @escaping PollFetcher,
         selection: @escaping @MainActor () -> WorkspaceSelection,
         priorSnapshots: @escaping @MainActor () -> [LaneSnapshot],
+        focusEligibility: @escaping @MainActor () -> [FocusAlertIdentity] = { [] },
+        acquireFreshFocus: @escaping FreshFocusAcquirer = { nil },
+        preEnrichmentReconcile: @escaping @MainActor (CMUXPollResult) -> CMUXPollResult = { $0 },
         apply: @escaping @MainActor (CMUXPollResult) async -> [LaneSnapshot],
         failed: @escaping @MainActor (String) -> Void = { _ in },
         scheduleRetry: @escaping RetryScheduler = WatcherPollingRuntime.defaultRetryScheduler
@@ -265,6 +276,9 @@ final class WatcherPollingRuntime {
         self.fetchPoll = fetchPoll
         self.selection = selection
         self.priorSnapshots = priorSnapshots
+        self.focusEligibility = focusEligibility
+        self.acquireFreshFocus = acquireFreshFocus
+        self.preEnrichmentReconcile = preEnrichmentReconcile
         self.apply = apply
         self.failed = failed
         self.scheduleRetry = scheduleRetry
@@ -310,15 +324,25 @@ final class WatcherPollingRuntime {
 
     func baselineTick() {
         guard let request = driver.beginBaselinePoll() else { return }
-        launch(request)
+        launch(request, pollKind: .baseline)
     }
 
-    private func launch(_ request: AttentionPollRequest) {
+    private func launch(_ request: AttentionPollRequest, pollKind: WatcherPollKind = .wake) {
         let fetchPoll = self.fetchPoll
         let selection = self.selection()
+        let eligibility = pollKind == .baseline ? focusEligibility() : []
+        let acquireFreshFocus = self.acquireFreshFocus
         Task { [weak self] in
             let result = await Task.detached { () -> Result<CMUXPollResult, Error> in
-                Result { try fetchPoll(selection) }
+                Result {
+                    let fetched = try fetchPoll(selection)
+                    let observation = pollKind == .baseline ? acquireFreshFocus() : nil
+                    return fetched.carrying(
+                        pollKind: pollKind,
+                        focusEligibility: eligibility,
+                        focusObservation: observation
+                    )
+                }
             }.value
             guard let self else { return }
             switch result {
@@ -329,7 +353,7 @@ final class WatcherPollingRuntime {
                     prior: self.projectedSnapshots ?? self.priorSnapshots()
                 ) else { return }
                 self.service(completion.actions)
-                self.enqueueApply(completion.result)
+                self.enqueueApply(self.preEnrichmentReconcile(completion.result))
             case let .failure(error):
                 guard let actions = self.driver.failPoll(request) else { return }
                 self.service(actions)
@@ -338,17 +362,20 @@ final class WatcherPollingRuntime {
         }
     }
 
-    private func service(_ actions: AttentionWakeActions) {
+    private func service(
+        _ actions: AttentionWakeActions,
+        pollKind: WatcherPollKind = .wake
+    ) {
         for id in Array(retryTasks.keys) where !driver.isRetryActive(id: id) {
             retryTasks.removeValue(forKey: id)?.cancel()
         }
-        if let poll = actions.poll { launch(poll) }
+        if let poll = actions.poll { launch(poll, pollKind: pollKind) }
         if let retry = actions.retry {
             retryTasks[retry.id] = scheduleRetry(retry.delay) { [weak self] in
                 guard let self else { return }
                 self.retryTasks.removeValue(forKey: retry.id)
                 guard let due = self.driver.retryDeadline(id: retry.id) else { return }
-                self.service(due)
+                self.service(due, pollKind: .retry)
             }
         }
     }
@@ -391,7 +418,11 @@ final class WatcherPollingRuntime {
             inventory: result.inventory,
             lanes: lanes,
             readFailures: result.readFailures,
-            quarantinedLaneIDs: result.quarantinedLaneIDs
+            quarantinedLaneIDs: result.quarantinedLaneIDs,
+            pollKind: result.pollKind,
+            focusEligibility: result.focusEligibility,
+            focusObservation: result.focusObservation,
+            preEnrichmentFocusPlan: result.preEnrichmentFocusPlan
         )
     }
 

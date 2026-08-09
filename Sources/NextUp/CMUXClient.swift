@@ -1,5 +1,17 @@
 import Foundation
+import AppKit
 import NextUpCore
+
+struct CMUXFreshFocusAcquisition: Sendable {
+    let snapshot: CMUXWorkspaceInventorySnapshot
+    let isCMUXFrontmost: Bool
+    let startedAt: Date
+    let finishedAt: Date
+
+    var duration: TimeInterval {
+        finishedAt.timeIntervalSince(startedAt)
+    }
+}
 
 struct CMUXPollResult: Sendable {
     let workspaces: [WorkspaceInfo]
@@ -7,32 +19,147 @@ struct CMUXPollResult: Sendable {
     let lanes: [LaneSnapshot]
     let readFailures: Set<AttentionHintIdentity>
     let quarantinedLaneIDs: Set<String>
+    let pollKind: WatcherPollKind
+    let focusEligibility: [FocusAlertIdentity]
+    let focusObservation: CMUXFreshFocusAcquisition?
+    let preEnrichmentFocusPlan: FocusSuppressionPlan
 
     init(
         workspaces: [WorkspaceInfo],
         inventory: [WorkspaceInventoryRecord],
         lanes: [LaneSnapshot],
         readFailures: Set<AttentionHintIdentity>,
-        quarantinedLaneIDs: Set<String> = []
+        quarantinedLaneIDs: Set<String> = [],
+        pollKind: WatcherPollKind = .baseline,
+        focusEligibility: [FocusAlertIdentity] = [],
+        focusObservation: CMUXFreshFocusAcquisition? = nil,
+        preEnrichmentFocusPlan: FocusSuppressionPlan = .empty
     ) {
         self.workspaces = workspaces
         self.inventory = inventory
         self.lanes = lanes
         self.readFailures = readFailures
         self.quarantinedLaneIDs = quarantinedLaneIDs
+        self.pollKind = pollKind
+        self.focusEligibility = focusEligibility
+        self.focusObservation = focusObservation
+        self.preEnrichmentFocusPlan = preEnrichmentFocusPlan
+    }
+
+    func carrying(
+        pollKind: WatcherPollKind,
+        focusEligibility: [FocusAlertIdentity],
+        focusObservation: CMUXFreshFocusAcquisition?
+    ) -> CMUXPollResult {
+        CMUXPollResult(
+            workspaces: workspaces,
+            inventory: inventory,
+            lanes: lanes,
+            readFailures: readFailures,
+            quarantinedLaneIDs: quarantinedLaneIDs,
+            pollKind: pollKind,
+            focusEligibility: focusEligibility,
+            focusObservation: focusObservation,
+            preEnrichmentFocusPlan: preEnrichmentFocusPlan
+        )
+    }
+
+    func carrying(preEnrichmentFocusPlan: FocusSuppressionPlan) -> CMUXPollResult {
+        CMUXPollResult(
+            workspaces: workspaces,
+            inventory: inventory,
+            lanes: lanes,
+            readFailures: readFailures,
+            quarantinedLaneIDs: quarantinedLaneIDs,
+            pollKind: pollKind,
+            focusEligibility: focusEligibility,
+            focusObservation: focusObservation,
+            preEnrichmentFocusPlan: preEnrichmentFocusPlan
+        )
     }
 }
 
 struct CMUXClient: Sendable {
+    typealias ProcessRunner = @Sendable (
+        _ executableURL: URL,
+        _ arguments: [String],
+        _ environment: [String: String]?,
+        _ deadline: TimeInterval
+    ) throws -> BoundedProcessResult
+
     let executable: String
     let commandDeadline: TimeInterval
+    private let now: @Sendable () -> Date
+    private let isCMUXFrontmost: @Sendable () -> Bool
+    private let processRunner: ProcessRunner
 
     init(
         executable: String = "/Applications/cmux.app/Contents/Resources/bin/cmux",
-        commandDeadline: TimeInterval = 3
+        commandDeadline: TimeInterval = 3,
+        now: @escaping @Sendable () -> Date = Date.init,
+        isCMUXFrontmost: @escaping @Sendable () -> Bool = {
+            NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.cmuxterm.app"
+        },
+        processRunner: @escaping ProcessRunner = { executableURL, arguments, environment, deadline in
+            try BoundedProcessRunner().run(
+                executableURL: executableURL,
+                arguments: arguments,
+                environment: environment,
+                deadline: deadline
+            )
+        }
     ) {
         self.executable = executable
         self.commandDeadline = commandDeadline
+        self.now = now
+        self.isCMUXFrontmost = isCMUXFrontmost
+        self.processRunner = processRunner
+    }
+
+    func acquireFreshFocus() -> CMUXFreshFocusAcquisition? {
+        let arguments = ["--json", "--id-format", "both", "tree", "--all"]
+        let environment = Self.childEnvironment()
+        let startedAt = now()
+        guard let result = try? processRunner(
+            URL(fileURLWithPath: executable),
+            arguments,
+            environment,
+            min(commandDeadline, 2)
+        ), result.terminationStatus == 0,
+           let snapshot = try? CMUXWorkspaceInventoryParser.parseSnapshot(result.standardOutput),
+           let activeFocus = snapshot.activeFocus,
+           Self.activeRouteMatchCount(activeFocus, in: snapshot) == 1,
+           isCMUXFrontmost() else {
+            return nil
+        }
+        let finishedAt = now()
+        let duration = finishedAt.timeIntervalSince(startedAt)
+        guard duration >= 0, duration <= 2 else { return nil }
+        return CMUXFreshFocusAcquisition(
+            snapshot: snapshot,
+            isCMUXFrontmost: true,
+            startedAt: startedAt,
+            finishedAt: finishedAt
+        )
+    }
+
+    private static func activeRouteMatchCount(
+        _ focus: CMUXActiveFocus,
+        in snapshot: CMUXWorkspaceInventorySnapshot
+    ) -> Int {
+        let activeTarget = CMUXNavigationTarget(
+            windowID: focus.windowID,
+            windowRef: focus.windowRef,
+            workspaceID: focus.workspaceID,
+            workspaceRef: focus.workspaceRef,
+            paneID: focus.paneID,
+            paneRef: focus.paneRef,
+            surfaceID: focus.surfaceID,
+            surfaceRef: focus.surfaceRef
+        )
+        return snapshot.records.reduce(into: 0) { count, record in
+            count += record.lanes.count { $0.navigationTarget == activeTarget }
+        }
     }
 
     func fetchInventory() throws -> [WorkspaceInventoryRecord] {
@@ -101,12 +228,12 @@ struct CMUXClient: Sendable {
         )
     }
 
-    private func run(_ arguments: [String]) throws -> Data {
-        let result = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: executable),
-            arguments: arguments,
-            environment: Self.childEnvironment(),
-            deadline: commandDeadline
+    private func run(_ arguments: [String], deadline: TimeInterval? = nil) throws -> Data {
+        let result = try processRunner(
+            URL(fileURLWithPath: executable),
+            arguments,
+            Self.childEnvironment(),
+            deadline ?? commandDeadline
         )
         guard result.terminationStatus == 0 else {
             let message = String(data: result.standardError, encoding: .utf8) ?? "unknown CMUX error"

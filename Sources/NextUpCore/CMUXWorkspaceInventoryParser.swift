@@ -22,14 +22,28 @@ public struct WorkspaceInventoryRecord: Equatable, Sendable {
     }
 }
 
+public struct CMUXWorkspaceInventorySnapshot: Equatable, Sendable {
+    public let records: [WorkspaceInventoryRecord]
+    public let activeFocus: CMUXActiveFocus?
+
+    public init(records: [WorkspaceInventoryRecord], activeFocus: CMUXActiveFocus?) {
+        self.records = records
+        self.activeFocus = activeFocus
+    }
+}
+
 public enum CMUXWorkspaceInventoryParser {
     public static func parse(_ data: Data) throws -> [WorkspaceInventoryRecord] {
+        try parseSnapshot(data).records
+    }
+
+    public static func parseSnapshot(_ data: Data) throws -> CMUXWorkspaceInventorySnapshot {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let windows = root["windows"] as? [[String: Any]] else {
             throw ParseError.invalidRoot
         }
 
-        return windows
+        let records = windows
             .flatMap { window -> [WorkspaceInventoryRecord] in
                 let windowID = window["id"] as? String
                 let windowRef = window["ref"] as? String
@@ -82,6 +96,41 @@ public enum CMUXWorkspaceInventoryParser {
             }
             }
             .sorted { $0.info.id < $1.info.id }
+
+        return CMUXWorkspaceInventorySnapshot(
+            records: records,
+            activeFocus: parseActiveFocus(root["active"])
+        )
+    }
+
+    private static func parseActiveFocus(_ value: Any?) -> CMUXActiveFocus? {
+        guard let active = value as? [String: Any],
+              let windowID = nonEmptyString(active["window_id"]),
+              let windowRef = nonEmptyString(active["window_ref"]),
+              let workspaceID = nonEmptyString(active["workspace_id"]),
+              let workspaceRef = nonEmptyString(active["workspace_ref"]),
+              let paneID = nonEmptyString(active["pane_id"]),
+              let paneRef = nonEmptyString(active["pane_ref"]),
+              let surfaceID = nonEmptyString(active["surface_id"]),
+              let surfaceRef = nonEmptyString(active["surface_ref"]) else {
+            return nil
+        }
+
+        return CMUXActiveFocus(
+            windowID: windowID,
+            windowRef: windowRef,
+            workspaceID: workspaceID,
+            workspaceRef: workspaceRef,
+            paneID: paneID,
+            paneRef: paneRef,
+            surfaceID: surfaceID,
+            surfaceRef: surfaceRef
+        )
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let value = value as? String, !value.isEmpty else { return nil }
+        return value
     }
 
     public enum ParseError: Error, Equatable {

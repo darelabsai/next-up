@@ -43,9 +43,10 @@ RELEASE_KEYS = {
     "rollback_target",
     "historical_bundle_version",
     "historical_bundle_build",
+    "acceptance_receipts",
     "record",
 }
-RECORD_LABELS = (
+BASE_RECORD_LABELS = (
     "Version",
     "Build",
     "Date",
@@ -55,6 +56,15 @@ RECORD_LABELS = (
     "Predecessor",
     "Rollback-Target",
 )
+ACCEPTANCE_RECEIPTS = {
+    "completion_focused_suppression": "Completion-Focused-Suppression",
+    "input_required_focused_suppression": "Input-Required-Focused-Suppression",
+    "completion_later_focus_auto_clear": "Completion-Later-Focus-Auto-Clear",
+    "input_required_later_focus_auto_clear": "Input-Required-Later-Focus-Auto-Clear",
+    "body_click_route_and_foreground": "Body-Click-Route-And-Foreground",
+    "owner_native_card_removal_verification": "Owner-Native-Card-Removal-Verification",
+    "cleanup": "Cleanup",
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -65,13 +75,15 @@ def nullable_text(value: object) -> str:
     return "null" if value is None else str(value)
 
 
-def parse_record(path: Path, errors: list[str]) -> dict[str, str]:
+def parse_record(
+    path: Path, labels: tuple[str, ...], errors: list[str]
+) -> dict[str, str]:
     if not path.is_file():
         fail(errors, f"missing release record: {path.relative_to(ROOT)}")
         return {}
     lines = path.read_text(encoding="utf-8").splitlines()
     parsed: dict[str, str] = {}
-    for index, label in enumerate(RECORD_LABELS):
+    for index, label in enumerate(labels):
         prefix = f"{label}: "
         if index >= len(lines) or not lines[index].startswith(prefix):
             fail(errors, f"{path.relative_to(ROOT)} line {index + 1} must start with {prefix!r}")
@@ -137,8 +149,8 @@ def main() -> int:
         catalog = {}
     if set(catalog) != TOP_KEYS:
         fail(errors, "catalog top-level keys must match the closed schema")
-    if catalog.get("schema_version") != 1:
-        fail(errors, "catalog schema_version must be 1")
+    if catalog.get("schema_version") != 2:
+        fail(errors, "catalog schema_version must be 2")
     releases = catalog.get("releases")
     if not isinstance(releases, list) or not releases:
         fail(errors, "catalog releases must be a non-empty array")
@@ -192,6 +204,25 @@ def main() -> int:
         for key in ("signing_mode", "deployment_identity"):
             if release[key] is not None and (not isinstance(release[key], str) or not release[key]):
                 fail(errors, f"{where} {key} must be non-empty string or null")
+        acceptance = release["acceptance_receipts"]
+        if version == current_version:
+            if not isinstance(acceptance, dict) or set(acceptance) != set(ACCEPTANCE_RECEIPTS):
+                fail(errors, f"{where} acceptance_receipts keys must match the closed schema")
+                acceptance = {}
+            else:
+                for key, value in acceptance.items():
+                    if not isinstance(value, bool):
+                        fail(errors, f"{where} acceptance_receipts {key} must be boolean")
+            if release["status"] in ("planned", "implemented", "reviewed") and any(
+                value is True for value in acceptance.values()
+            ):
+                fail(errors, f"status {release['status']} requires pending acceptance_receipts")
+            if release["status"] in ("live-accepted", "superseded") and any(
+                value is not True for value in acceptance.values()
+            ):
+                fail(errors, f"status {release['status']} requires all acceptance_receipts")
+        elif acceptance is not None:
+            fail(errors, f"{where} historical acceptance_receipts must be null")
         receipt_requirements = {
             "source-verified": ("source_commit",),
             "packaged": ("source_commit", "artifact_sha256", "signing_mode"),
@@ -214,6 +245,35 @@ def main() -> int:
                 "deployment_identity",
             ),
         }
+        forbidden_receipts = {
+            "planned": (
+                "source_commit",
+                "artifact_sha256",
+                "signing_mode",
+                "deployment_identity",
+            ),
+            "implemented": (
+                "source_commit",
+                "artifact_sha256",
+                "signing_mode",
+                "deployment_identity",
+            ),
+            "reviewed": (
+                "source_commit",
+                "artifact_sha256",
+                "signing_mode",
+                "deployment_identity",
+            ),
+            "source-verified": (
+                "artifact_sha256",
+                "signing_mode",
+                "deployment_identity",
+            ),
+            "packaged": ("deployment_identity",),
+        }
+        for forbidden in forbidden_receipts.get(release["status"], ()):
+            if release[forbidden] is not None:
+                fail(errors, f"status {release['status']} forbids {forbidden}")
         for required in receipt_requirements.get(release["status"], ()):
             if release[required] is None:
                 fail(errors, f"status {release['status']} requires {required}")
@@ -221,7 +281,10 @@ def main() -> int:
         expected_record = f"docs/releases/{version}.md"
         if record_value != expected_record:
             fail(errors, f"{where} record must equal {expected_record}")
-        record = parse_record(ROOT / expected_record, errors)
+        labels = BASE_RECORD_LABELS
+        if isinstance(acceptance, dict):
+            labels += tuple(ACCEPTANCE_RECEIPTS.values())
+        record = parse_record(ROOT / expected_record, labels, errors)
         expected_lines = {
             "Version": version,
             "Build": str(release["build"]),
@@ -235,6 +298,11 @@ def main() -> int:
         for label, expected in expected_lines.items():
             if record.get(label) != expected:
                 fail(errors, f"{expected_record} {label} does not match catalog")
+        if isinstance(acceptance, dict):
+            for key, label in ACCEPTANCE_RECEIPTS.items():
+                expected = "passed" if acceptance.get(key) is True else "pending"
+                if record.get(label) != expected:
+                    fail(errors, f"{expected_record} {label} does not match catalog")
         if f"## [{version}] - {release['date']}" not in changelog:
             fail(errors, f"CHANGELOG missing exact heading for {version}")
         human_release = human_releases.get(version)
@@ -256,6 +324,8 @@ def main() -> int:
     else:
         if current_release["build"] != plist_build:
             fail(errors, "current catalog build does not equal Info.plist build")
+        if releases and releases[0] is not current_release:
+            fail(errors, "current release must be the first catalog entry")
 
     if catalog_versions != changelog_versions:
         fail(errors, "catalog and CHANGELOG release sets differ")

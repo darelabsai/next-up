@@ -1,6 +1,30 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "releases": [
+    {
+      "version": "1.2.0",
+      "date": "2026-08-08",
+      "build": 3,
+      "status": "reviewed",
+      "source_commit": null,
+      "artifact_sha256": null,
+      "signing_mode": null,
+      "deployment_identity": null,
+      "predecessor": "1.1.0",
+      "rollback_target": "1.1.0",
+      "historical_bundle_version": null,
+      "historical_bundle_build": null,
+      "acceptance_receipts": {
+        "completion_focused_suppression": false,
+        "input_required_focused_suppression": false,
+        "completion_later_focus_auto_clear": false,
+        "input_required_later_focus_auto_clear": false,
+        "body_click_route_and_foreground": false,
+        "owner_native_card_removal_verification": false,
+        "cleanup": false
+      },
+      "record": "docs/releases/1.2.0.md"
+    },
     {
       "version": "1.1.0",
       "date": "2026-08-08",
@@ -14,6 +38,7 @@
       "rollback_target": "1.0.0",
       "historical_bundle_version": null,
       "historical_bundle_build": null,
+      "acceptance_receipts": null,
       "record": "docs/releases/1.1.0.md"
     },
     {
@@ -29,6 +54,7 @@
       "rollback_target": null,
       "historical_bundle_version": "0.1.0",
       "historical_bundle_build": 1,
+      "acceptance_receipts": null,
       "record": "docs/releases/1.0.0.md"
     }
   ]

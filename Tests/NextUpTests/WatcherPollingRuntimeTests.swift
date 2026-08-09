@@ -153,6 +153,14 @@ private actor ApplyGate {
     }
 }
 
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func increment() { lock.withLock { value += 1 } }
+    func read() -> Int { lock.withLock { value } }
+}
+
 private final class QueuedQuarantineFake: @unchecked Sendable {
     private let lock = NSLock()
     private var pollFetches = 0
@@ -536,4 +544,113 @@ private final class QueuedQuarantineFake: @unchecked Sendable {
     #expect(fake.pollFetchCount() == 3)
 
     runtime.stop()
+}
+
+@MainActor
+@Test func baselineCarriesRequestStartEligibilityAndOnePostFetchFreshFocus() async throws {
+    let fake = RuntimeFake()
+    let route = runtimeFocusRoute()
+    let eligible = FocusAlertIdentity(kind: .completion, laneID: "old", navigationTarget: route)
+    var eligibilityReads = 0
+    let focusReads = LockedCounter()
+    var applied: CMUXPollResult?
+    let runtime = WatcherPollingRuntime(
+        fetchInventory: fake.inventory,
+        fetchPoll: fake.full,
+        selection: { WorkspaceSelection() },
+        priorSnapshots: { [] },
+        focusEligibility: {
+            eligibilityReads += 1
+            return [eligible]
+        },
+        acquireFreshFocus: {
+            focusReads.increment()
+            return runtimeFreshFocus(route: route, at: Date(timeIntervalSince1970: 100))
+        },
+        apply: { result in
+            applied = result
+            return result.lanes
+        }
+    )
+    runtime.start()
+
+    runtime.baselineTick()
+    for _ in 0..<100 where fake.fullFetchCount() == 0 {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(eligibilityReads == 1)
+    #expect(focusReads.read() == 0)
+    fake.releaseFullFetch()
+    for _ in 0..<100 where applied == nil {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+
+    #expect(focusReads.read() == 1)
+    #expect(applied?.pollKind == .baseline)
+    #expect(applied?.focusEligibility == [eligible])
+    #expect(applied?.focusObservation?.finishedAt == Date(timeIntervalSince1970: 100))
+    runtime.stop()
+}
+
+@MainActor
+@Test func existingFocusReconcilesBeforeAsynchronousApplyWorkStarts() async throws {
+    let fake = RuntimeFake()
+    var events: [String] = []
+    let runtime = WatcherPollingRuntime(
+        fetchInventory: fake.inventory,
+        fetchPoll: fake.full,
+        selection: { WorkspaceSelection() },
+        priorSnapshots: { [] },
+        preEnrichmentReconcile: { result in
+            events.append("reconcile")
+            return result
+        },
+        apply: { result in
+            events.append("apply")
+            return result.lanes
+        }
+    )
+    runtime.start()
+
+    runtime.baselineTick()
+    for _ in 0..<100 where fake.fullFetchCount() == 0 {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    fake.releaseFullFetch()
+    for _ in 0..<100 where events.count < 2 {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+
+    #expect(events == ["reconcile", "apply"])
+    runtime.stop()
+}
+
+private func runtimeFocusRoute() -> CMUXNavigationTarget {
+    CMUXNavigationTarget(
+        windowID: "window", windowRef: "window-ref",
+        workspaceID: "workspace", workspaceRef: "workspace-ref",
+        paneID: "pane", paneRef: "pane-ref",
+        surfaceID: "surface", surfaceRef: "surface-ref"
+    )
+}
+
+private func runtimeFreshFocus(route: CMUXNavigationTarget, at date: Date) -> CMUXFreshFocusAcquisition {
+    let lane = LaneSnapshot(id: "focused", title: "Focused", state: .unknown, navigationTarget: route)
+    return CMUXFreshFocusAcquisition(
+        snapshot: CMUXWorkspaceInventorySnapshot(
+            records: [WorkspaceInventoryRecord(
+                info: WorkspaceInfo(id: "workspace-ref", persistentID: "workspace", title: "Work"),
+                lanes: [lane]
+            )],
+            activeFocus: CMUXActiveFocus(
+                windowID: route.windowID, windowRef: route.windowRef,
+                workspaceID: route.workspaceID, workspaceRef: route.workspaceRef,
+                paneID: route.paneID, paneRef: route.paneRef,
+                surfaceID: route.surfaceID, surfaceRef: route.surfaceRef
+            )
+        ),
+        isCMUXFrontmost: true,
+        startedAt: date,
+        finishedAt: date
+    )
 }

@@ -8,7 +8,7 @@ import Testing
         .appendingPathComponent("next-up-pending-probe-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let stateURL = directory.appendingPathComponent("state.json")
+    let stateURL = directory.appendingPathComponent("watcher-transaction.json")
     var state = LaneMonitorState()
     state.observe([
         LaneSnapshot(id: "surface:42", title: "PRIVATE TITLE", state: .busy)
@@ -21,9 +21,14 @@ import Testing
     ], now: Date(timeIntervalSince1970: 101))
     state.markAnnounced(laneIDs: ["surface:42"], at: Date(timeIntervalSince1970: 105))
     state.markAnnounced(laneIDs: ["surface:42"], at: Date(timeIntervalSince1970: 110.125))
-    try JSONEncoder().encode(state).write(to: stateURL)
+    try JSONEncoder().encode(WatcherTransactionState(
+        laneMonitorState: state,
+        pollReceiptState: PollReceiptState(processEpoch: UUID())
+    )).write(to: stateURL)
 
-    let payload = try PendingStateProbe.read(laneID: "surface:42", stateURL: stateURL)
+    let payload = try PendingStateProbe.read(
+        laneID: "surface:42", transactionStateURL: stateURL
+    )
     let rendered = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
 
     #expect(payload == PendingStateProbe.Payload(
@@ -37,7 +42,7 @@ import Testing
     let missing = FileManager.default.temporaryDirectory
         .appendingPathComponent("next-up-missing-\(UUID().uuidString)/state.json")
 
-    #expect(try PendingStateProbe.read(laneID: "surface:42", stateURL: missing) == .init(
+    #expect(try PendingStateProbe.read(laneID: "surface:42", transactionStateURL: missing) == .init(
         pending: false, announcementCount: nil, lastAnnouncedAtUnixMilliseconds: nil
     ))
 }
@@ -51,9 +56,9 @@ import Testing
     try Data("not-json".utf8).write(to: stateURL)
 
     #expect(throws: PendingStateProbe.ProbeError.self) {
-        _ = try PendingStateProbe.read(laneID: "", stateURL: stateURL)
+        _ = try PendingStateProbe.read(laneID: "", transactionStateURL: stateURL)
     }
     #expect(throws: DecodingError.self) {
-        _ = try PendingStateProbe.read(laneID: "surface:42", stateURL: stateURL)
+        _ = try PendingStateProbe.read(laneID: "surface:42", transactionStateURL: stateURL)
     }
 }

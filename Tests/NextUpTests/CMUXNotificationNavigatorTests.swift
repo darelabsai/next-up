@@ -7,16 +7,24 @@ private final class NavigationRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var storedCalls: [[String]] = []
     private var storedActivations = 0
+    private var storedEvents: [String] = []
 
     var calls: [[String]] { lock.withLock { storedCalls } }
     var activations: Int { lock.withLock { storedActivations } }
+    var events: [String] { lock.withLock { storedEvents } }
 
     func append(_ arguments: [String]) {
-        lock.withLock { storedCalls.append(arguments) }
+        lock.withLock {
+            storedCalls.append(arguments)
+            storedEvents.append(arguments.first ?? "empty-command")
+        }
     }
 
     func activate() -> Bool {
-        lock.withLock { storedActivations += 1 }
+        lock.withLock {
+            storedActivations += 1
+            storedEvents.append("activate-app")
+        }
         return true
     }
 }
@@ -67,7 +75,7 @@ private func executor(
             output: Data()
         )
     }
-    return (CMUXNavigationExecutor(command: command, appActivator: recorder.activate), recorder)
+    return (CMUXNavigationExecutor(command: command), recorder)
 }
 
 private let completeTarget = CMUXNavigationTarget(
@@ -77,10 +85,14 @@ private let completeTarget = CMUXNavigationTarget(
     surfaceID: "S", surfaceRef: "surface:1"
 )
 
-@Test func completePersistentRouteUsesValidatedFreshRefsForScopedChildFocus() {
-    let (navigator, recorder) = executor(topologyData: topology())
+@Test func completePersistentRouteUsesValidatedFreshRefsForScopedChildFocus() async {
+    let (routeExecutor, recorder) = executor(topologyData: topology())
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: recorder.activate)
+    )
 
-    let result = navigator.navigate(to: completeTarget)
+    let result = await navigator.navigate(to: completeTarget)
 
     #expect(result.deepestSuccess == .surface)
     #expect(recorder.calls == [
@@ -90,6 +102,7 @@ private let completeTarget = CMUXNavigationTarget(
         ["focus-panel", "--panel", "surface:1", "--workspace", "WS", "--window", "W"],
     ])
     #expect(recorder.calls.flatMap { $0 }.contains("PRIVATE SURFACE") == false)
+    #expect(recorder.activations == 1)
 }
 
 @Test func failedWindowDoesNotBlockGloballyVerifiedPersistentChildren() {
@@ -158,16 +171,22 @@ private let completeTarget = CMUXNavigationTarget(
     ])
 }
 
-@Test func surfaceFailureFallsBackToPersistentPane() {
-    let (navigator, recorder) = executor(topologyData: topology(), failingCommand: "focus-panel")
+@Test func surfaceFailureFallsBackToPersistentPaneThenActivatesApp() async {
+    let (routeExecutor, recorder) = executor(topologyData: topology(), failingCommand: "focus-panel")
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: recorder.activate)
+    )
 
-    let result = navigator.navigate(to: completeTarget)
+    let result = await navigator.navigate(to: completeTarget)
 
     #expect(result.deepestSuccess == .pane)
     #expect(recorder.calls.suffix(2) == [
         ["focus-panel", "--panel", "surface:1", "--workspace", "WS", "--window", "W"],
         ["focus-pane", "--pane", "pane:1", "--workspace", "WS", "--window", "W"],
     ])
+    #expect(recorder.activations == 1)
+    #expect(recorder.events.suffix(3) == ["focus-panel", "focus-pane", "activate-app"])
 }
 
 @Test func refSurfaceFailureUsesRefPaneWithRefWorkspaceScope() {
@@ -203,7 +222,7 @@ private let completeTarget = CMUXNavigationTarget(
     ])
 }
 
-@Test func movedPersistentSurfaceUsesItsFreshCurrentParents() {
+@Test func movedPersistentSurfaceCannotOverrideItsCapturedPersistentParents() {
     let moved = topology(
         windowID: "W2", windowRef: "window:8",
         workspaceID: "WS2", workspaceRef: "workspace:8",
@@ -214,37 +233,158 @@ private let completeTarget = CMUXNavigationTarget(
 
     let result = navigator.navigate(to: completeTarget)
 
-    #expect(result.deepestSuccess == .surface)
-    #expect(recorder.calls.contains(["focus-window", "--window", "W2"]))
-    #expect(recorder.calls.contains(["select-workspace", "--workspace", "WS2"]))
-    #expect(recorder.calls.contains([
-        "focus-panel", "--panel", "surface:8", "--workspace", "WS2", "--window", "W2",
-    ]))
+    #expect(result.deepestSuccess == .none)
+    #expect(recorder.calls == [["--json", "--id-format", "both", "tree", "--all"]])
 }
 
-@Test func unsupportedRefOnlyWindowFailsClosedToAppActivation() {
+@Test func unsupportedRefOnlyWindowFailsClosedToAppActivation() async {
     let current = topology(windowID: nil, workspaceID: nil, paneID: nil, surfaceID: nil)
     let target = CMUXNavigationTarget(
         windowRef: "window:1", workspaceRef: "workspace:1",
         paneRef: "pane:1", surfaceRef: "surface:1"
     )
-    let (navigator, recorder) = executor(topologyData: current)
+    let (routeExecutor, recorder) = executor(topologyData: current)
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: recorder.activate)
+    )
 
-    let result = navigator.navigate(to: target)
+    let result = await navigator.navigate(to: target)
 
     #expect(result.deepestSuccess == .app)
     #expect(recorder.calls.count == 1)
     #expect(recorder.activations == 1)
 }
 
-@Test func allFocusFailuresActivateCMUXApp() {
-    let (navigator, recorder) = executor(topologyData: topology(), failingCommand: "*")
+@Test func allFocusFailuresActivateCMUXAppOnceAfterRouteCommands() async {
+    let (routeExecutor, recorder) = executor(topologyData: topology(), failingCommand: "*")
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: recorder.activate)
+    )
 
-    let result = navigator.navigate(to: completeTarget)
+    let result = await navigator.navigate(to: completeTarget)
 
     #expect(result.deepestSuccess == .app)
     #expect(recorder.activations == 1)
     #expect(result.failures.allSatisfy { !$0.description.contains("W") && !$0.description.contains("S") })
+}
+
+private final class AppActivationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var requestedBundleIdentifiers: [String] = []
+    private(set) var activationOptionsCalls = 0
+    private(set) var sleepNanoseconds: [UInt64] = []
+    private var frontmostValues: [String?]
+
+    init(frontmostValues: [String?]) {
+        self.frontmostValues = frontmostValues
+    }
+
+    func locate(_ bundleIdentifier: String) -> (@MainActor @Sendable () -> Bool)? {
+        lock.withLock { requestedBundleIdentifiers.append(bundleIdentifier) }
+        return {
+            self.lock.withLock { self.activationOptionsCalls += 1 }
+            return true
+        }
+    }
+
+    func frontmostBundleIdentifier() -> String? {
+        lock.withLock {
+            guard !frontmostValues.isEmpty else { return nil }
+            return frontmostValues.removeFirst()
+        }
+    }
+
+    func sleep(_ nanoseconds: UInt64) async throws {
+        lock.withLock { sleepNanoseconds.append(nanoseconds) }
+    }
+}
+
+@MainActor
+@Test func appActivatorFindsOnlyCMUXActivatesAllWindowsAndWaitsForObservedForeground() async {
+    let recorder = AppActivationRecorder(frontmostValues: ["other.app", "com.cmuxterm.app"])
+    let activator = CMUXAppActivator(
+        locateApplication: recorder.locate,
+        frontmostBundleIdentifier: recorder.frontmostBundleIdentifier,
+        sleep: recorder.sleep
+    )
+
+    let result = await activator.activate()
+
+    #expect(result)
+    #expect(recorder.requestedBundleIdentifiers == ["com.cmuxterm.app"])
+    #expect(recorder.activationOptionsCalls == 1)
+    #expect(recorder.sleepNanoseconds == [25_000_000, 25_000_000])
+}
+
+@MainActor
+@Test func appActivatorFailsForMissingApplicationRejectedActivationAndTimeout() async {
+    let missing = CMUXAppActivator(
+        locateApplication: { _ in nil },
+        frontmostBundleIdentifier: { "other.app" },
+        sleep: { _ in }
+    )
+    #expect(await !missing.activate())
+
+    let rejected = CMUXAppActivator(
+        locateApplication: { _ in { false } },
+        frontmostBundleIdentifier: { "com.cmuxterm.app" },
+        sleep: { _ in }
+    )
+    #expect(await !rejected.activate())
+
+    let timeoutRecorder = AppActivationRecorder(frontmostValues: [])
+    let timedOut = CMUXAppActivator(
+        locateApplication: { _ in { true } },
+        frontmostBundleIdentifier: timeoutRecorder.frontmostBundleIdentifier,
+        sleep: timeoutRecorder.sleep
+    )
+    #expect(await !timedOut.activate())
+    #expect(timeoutRecorder.sleepNanoseconds.count == 40)
+}
+
+@MainActor
+@Test func appActivatorFailsClosedWhenConfirmationIsCancelled() async {
+    let activator = CMUXAppActivator(
+        locateApplication: { _ in { true } },
+        frontmostBundleIdentifier: { "other.app" },
+        sleep: { _ in throw CancellationError() }
+    )
+
+    #expect(await !activator.activate())
+}
+
+@Test func activationFailurePreservesDeepestRouteAndAppendsSafeFailure() async {
+    let (routeExecutor, recorder) = executor(topologyData: topology())
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: { false })
+    )
+
+    let result = await navigator.navigate(to: completeTarget)
+
+    #expect(result.deepestSuccess == .surface)
+    #expect(result.failures == [.appActivationFailed])
+    #expect(recorder.calls.last?.first == "focus-panel")
+}
+
+@Test func targetlessNavigationActivatesAppOnly() async {
+    let recorder = NavigationRecorder()
+    let routeExecutor = CMUXNavigationExecutor { arguments in
+        recorder.append(arguments)
+        return CMUXNavigationCommandResult(status: 0, output: Data())
+    }
+    let navigator = CMUXNotificationNavigator(
+        executor: routeExecutor,
+        appActivator: CMUXAppActivator(activate: recorder.activate)
+    )
+
+    let result = await navigator.navigate(to: Optional<CMUXNavigationTarget>.none)
+
+    #expect(result == CMUXNavigationResult(deepestSuccess: .app, failures: []))
+    #expect(recorder.calls.isEmpty)
+    #expect(recorder.activations == 1)
 }
 
 @MainActor
@@ -277,7 +417,8 @@ private let completeTarget = CMUXNavigationTarget(
         return CMUXNavigationCommandResult(status: 0, output: Data())
     }
     let navigator = CMUXNotificationNavigator(
-        executor: CMUXNavigationExecutor(command: command, appActivator: recorder.activate)
+        executor: CMUXNavigationExecutor(command: command),
+        appActivator: CMUXAppActivator(activate: recorder.activate)
     )
     let task = Task { await navigator.navigate(to: completeTarget) }
     await withCheckedContinuation { continuation in

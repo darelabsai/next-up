@@ -77,9 +77,14 @@ class CLIProbeProcessTests(unittest.TestCase):
         self.assertEqual(stdout, b"")
         self.assertEqual(stderr, f"{argument[2:].replace('-', ' ')} failed\n".encode())
 
-    def test_both_probe_entry_points_bound_open_empty_stdin(self) -> None:
+    def test_all_probe_entry_points_bound_open_empty_stdin(self) -> None:
         with tempfile.TemporaryDirectory() as home:
-            for argument in ("--navigation-probe", "--pending-probe"):
+            for argument in (
+                "--navigation-probe",
+                "--pending-probe",
+                "--alert-list-probe",
+                "--focused-lane-probe",
+            ):
                 with self.subTest(argument=argument):
                     self.assert_open_empty_stdin_times_out(argument, home)
 
@@ -100,6 +105,14 @@ class CLIProbeProcessTests(unittest.TestCase):
         self.assertEqual(json.loads(valid.stdout), {"pending": False})
         self.assertNotIn(b"process-contract-lane", valid.stdout)
 
+    def test_navigation_probe_uses_async_navigator_instead_of_route_executor_directly(self) -> None:
+        source = (ROOT / "Sources" / "NextUp" / "main.swift").read_text()
+        probe_source = source.split('if CommandLine.arguments.contains("--navigation-probe")', 1)[1]
+        probe_source = probe_source.split('if CommandLine.arguments.contains("--pending-probe")', 1)[0]
+
+        self.assertIn("CMUXNotificationNavigator().navigate", probe_source)
+        self.assertNotIn("CMUXNavigationExecutor().navigate", probe_source)
+
     def test_navigation_probe_handles_eof_malformed_and_oversized_privately(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             results = (
@@ -113,6 +126,69 @@ class CLIProbeProcessTests(unittest.TestCase):
             self.assertEqual(result.stdout, b"")
             self.assertEqual(result.stderr, b"navigation probe failed\n")
             self.assertLessEqual(len(result.stderr), 64)
+
+    def test_focus_probes_are_bounded_and_emit_only_closed_privacy_safe_json(self) -> None:
+        request = {
+            "candidate": {
+                "kind": "completion",
+                "laneID": "opaque-lane",
+                "navigationTarget": {
+                    "windowID": "window-id",
+                    "workspaceID": "workspace-id",
+                    "paneID": "pane-id",
+                    "surfaceID": "surface-id",
+                },
+            },
+            "readiness": {
+                "processEpoch": None,
+                "appliedPollSequence": 0,
+                "appliedBaselineGeneration": 0,
+            },
+        }
+        with tempfile.TemporaryDirectory() as home:
+            alert = self.run_probe("--alert-list-probe", b"opaque-lane\n", home)
+            malformed = self.run_probe("--focused-lane-probe", b"{", home)
+            oversized = self.run_probe("--focused-lane-probe", b"x" * 8193, home)
+            focused = self.run_probe(
+                "--focused-lane-probe",
+                json.dumps(request).encode(),
+                home,
+            )
+
+        self.assertEqual(alert.returncode, 0, alert.stderr)
+        self.assertEqual(
+            json.loads(alert.stdout),
+            {
+                "candidates": [],
+                "readiness": {
+                    "appliedPollSequence": 0,
+                    "appliedBaselineGeneration": 0,
+                },
+            },
+        )
+        self.assertNotIn(b"opaque-lane", alert.stdout)
+        for result in (malformed, oversized):
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, b"")
+            self.assertEqual(result.stderr, b"focused lane probe failed\n")
+        self.assertEqual(focused.returncode, 0, focused.stderr)
+        payload = json.loads(focused.stdout)
+        self.assertEqual(
+            set(payload),
+            {
+                "exactlyFocused",
+                "cmuxFrontmost",
+                "authoritativePending",
+                "receiptAccepted",
+                "appliedPollSequence",
+                "appliedBaselineGeneration",
+            },
+        )
+        self.assertFalse(payload["receiptAccepted"])
+        self.assertFalse(payload["authoritativePending"])
+        self.assertIsInstance(payload["cmuxFrontmost"], bool)
+        self.assertFalse(payload["exactlyFocused"])
+        self.assertNotIn(b"opaque-lane", focused.stdout)
 
 
 if __name__ == "__main__":

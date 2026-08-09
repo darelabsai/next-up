@@ -10,6 +10,12 @@ The app is observational while monitoring. It reads CMUX topology and visible te
 
 The deployed version monitors CMUX-visible lanes on this MacBook Air plus exact retained-SSH Mac Mini surfaces. It is not yet a universal inventory of every Hermes CLI, gateway, cron, or subagent run; that proposed future direction is documented separately below.
 
+## 1.2 candidate scope
+
+Version 1.2.0 build 3 is a reviewed candidate, not a deployed or live-accepted release. Its closed acceptance contract separately covers focused suppression and later-focus auto-clear for completion and input-required alerts, body-click route plus foreground, owner verification that native cards are removed, and cleanup. Clicking a notification body foregrounds CMUX and navigates using freshly revalidated exact identity.
+
+Those statements define candidate behavior to verify. They do not claim measured event latency, universal live acceptance, Hermes-only gating, source verification, artifact identity, or deployment; every exact 1.2 interaction receipt remains pending in the release record.
+
 ## Installed behavior
 
 - Performs an authoritative CMUX inventory and bounded 80-row visible-screen read every 5 seconds. A cheap topology/title-only scan runs every second for selected workspaces and can wake a coalesced screen read when a lane title begins with `⚠` or `⚠️`.
@@ -59,7 +65,7 @@ swift build -c release -Xswiftc -warnings-as-errors
 scripts/package-local-app.sh --ad-hoc-sign /tmp/Next-Up-candidate.app
 ```
 
-The live probe prints monitored lanes as JSON. The announcement probe prints deterministic approval, clarification, response, and mixed presentation fixtures. Both exit without starting the UI; the announcement probe also avoids CMUX, speech, and notification side effects. Installed acceptance additionally uses bounded stdin-only `--navigation-probe` and `--pending-probe` seams; the pending probe returns only pending status and cadence timestamps/counts, never lane content or identifiers.
+The live probe prints monitored lanes as JSON. The announcement probe prints deterministic approval, clarification, response, and mixed presentation fixtures. Both exit without starting the UI; the announcement probe also avoids CMUX, speech, and notification side effects. Installed acceptance additionally uses bounded stdin-only navigation, pending, alert-list, and focused-lane probes. Focus acceptance exposes authoritative pending state and CMUX-frontmost state as separate booleans, plus opaque route IDs and monotonic counters; it never emits lane content. The observer can prove focused suppression before durable pending visibility or a pending true→false later-focus transition after two successful baseline generations.
 
 ## Installed paths
 

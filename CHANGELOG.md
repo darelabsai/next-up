@@ -2,6 +2,19 @@
 
 All notable Next Up releases are recorded here. Detailed implementation, verification, deployment, and acceptance receipts live in `docs/releases/`.
 
+## [1.2.0] - 2026-08-08
+
+### Candidate scope
+
+- Separately verify exact-surface focused suppression for completion and input-required alerts; this is an identity-based foreground check, not a timing or event-latency claim.
+- Separately verify completion and input-required pending true→false auto-clear after later exact focus and two successful post-readiness baseline generations.
+- Verify that a notification-body click both routes by freshly revalidated exact identity and foregrounds CMUX, then require owner verification of native-card removal and explicit cleanup.
+
+### Release state
+
+- Reviewed source candidate only. Source verification, packaging, deployment, and all seven exact 1.2 cases—including owner native-card-removal verification and cleanup—remain pending.
+- The candidate does not claim universal Hermes event coverage or Hermes-only notification gating.
+
 ## [1.1.0] - 2026-08-08
 
 ### Added

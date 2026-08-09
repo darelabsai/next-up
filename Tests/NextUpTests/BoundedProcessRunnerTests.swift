@@ -58,7 +58,7 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
         _ = try BoundedProcessRunner().run(
             executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
             arguments: ["-c", source],
-            deadline: 0.15
+            deadline: 1
         )
     }
 

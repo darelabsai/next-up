@@ -58,10 +58,14 @@ final class WatcherModel: ObservableObject {
     private let selectionURL: URL
     private let voicePreferencesURL: URL
     private let activityDatesURL: URL
+    private let inputAttentionStateURL: URL
+    private let transactionStateStore: WatcherTransactionStateStore
     private let sessionService: HermesSessionService
     private var state: LaneMonitorState
     private var observationSession = LaneObservationSession()
     private var attentionTracker = InputAttentionTracker()
+    private var pollReceiptState: PollReceiptState
+    private var transactionState: WatcherTransactionState
     private var activityDates: [String: Date] = [:]
     private var pollTimer: Timer?
     private var hintTimer: Timer?
@@ -72,6 +76,17 @@ final class WatcherModel: ObservableObject {
         fetchPoll: { [client] selection in try client.fetch(selection: selection) },
         selection: { [weak self] in self?.selection ?? WorkspaceSelection() },
         priorSnapshots: { [weak self] in self?.lanes ?? [] },
+        focusEligibility: { [weak self] in
+            guard let self else { return [] }
+            return WatcherFocusReconciliation.eligibleAlerts(
+                state: self.state,
+                attentionTracker: self.attentionTracker
+            )
+        },
+        acquireFreshFocus: { [client] in client.acquireFreshFocus() },
+        preEnrichmentReconcile: { [weak self] result in
+            self?.reconcileExistingFocusBeforeEnrichment(result) ?? result
+        },
         apply: { [weak self] result in await self?.applyPollResult(result) ?? result.lanes },
         failed: { [weak self] message in self?.pollFailed(message) }
     )
@@ -83,6 +98,10 @@ final class WatcherModel: ObservableObject {
         selectionURL = base.appendingPathComponent("workspace-selection.json")
         voicePreferencesURL = base.appendingPathComponent("voice-preferences.json")
         activityDatesURL = base.appendingPathComponent("activity-dates.json")
+        inputAttentionStateURL = base.appendingPathComponent("input-attention-state.json")
+        let transactionStore = WatcherTransactionStateStore(
+            url: base.appendingPathComponent("watcher-transaction.json")
+        )
         sessionService = HermesSessionService(
             cacheURL: base.appendingPathComponent("session-bindings.json")
         )
@@ -98,17 +117,70 @@ final class WatcherModel: ObservableObject {
         } else {
             voiceMode = .titleAndSummary
         }
+        let legacyState: LaneMonitorState
         if let data = try? Data(contentsOf: stateURL),
            let restored = try? JSONDecoder().decode(LaneMonitorState.self, from: data) {
-            state = restored
+            legacyState = restored
         } else {
-            state = LaneMonitorState()
+            legacyState = LaneMonitorState()
         }
         if let data = try? Data(contentsOf: activityDatesURL),
            let restoredActivityDates = try? JSONDecoder().decode([String: Date].self, from: data) {
             activityDates = restoredActivityDates
         }
+        let legacyAttention = InputAttentionStateStore(url: inputAttentionStateURL).load()
+        let transaction = transactionStore.load(
+            legacyLaneMonitorState: legacyState,
+            legacyInputAttentionTracker: legacyAttention
+        )
+        transactionStateStore = transactionStore
+        transactionState = transaction
+        state = transaction.laneMonitorState
+        attentionTracker = transaction.inputAttentionTracker
+        pollReceiptState = transaction.pollReceiptState
         pending = state.pending
+    }
+
+    private func reconcileExistingFocusBeforeEnrichment(_ pollResult: CMUXPollResult) -> CMUXPollResult {
+        let currentAlerts = WatcherFocusReconciliation.eligibleAlerts(
+            state: state,
+            attentionTracker: attentionTracker
+        )
+        let stillEligible = pollResult.focusEligibility.filter { requested in
+            currentAlerts.contains { WatcherFocusReconciliation.sameIdentity(requested, $0) }
+        }
+        let plan = WatcherFocusReconciliation.plan(
+            eligibleAlerts: stillEligible,
+            observation: pollResult.focusObservation,
+            reconciledAt: Date()
+        )
+        guard !plan.suppressions.isEmpty else { return pollResult }
+        var proposedState = state
+        var proposedTracker = attentionTracker
+        let acknowledged = WatcherFocusAcknowledgementApplicator.apply(
+            laneIDs: Set(plan.suppressions.map(\.laneID)),
+            state: &proposedState,
+            attentionTracker: &proposedTracker
+        )
+        guard !acknowledged.isEmpty else { return pollResult }
+        do {
+            let committed = try transactionStateStore.commitAcknowledgement(
+                from: transactionState,
+                laneMonitorState: proposedState,
+                inputAttentionTracker: proposedTracker
+            )
+            transactionState = committed
+            state = committed.laneMonitorState
+            attentionTracker = committed.inputAttentionTracker
+            pollReceiptState = committed.pollReceiptState
+            pending = state.pending
+            attentionLaneIDs = attentionTracker.activeLaneIDs
+            removeDeliveredNotifications(for: acknowledged)
+            return pollResult.carrying(preEnrichmentFocusPlan: plan)
+        } catch {
+            pollFailed("could not commit focused acknowledgement")
+            return pollResult
+        }
     }
 
     func start() {
@@ -171,6 +243,12 @@ final class WatcherModel: ObservableObject {
     private func applyPollResult(_ pollResult: CMUXPollResult) async -> [LaneSnapshot] {
         let isFirstPoll = workspaces.isEmpty
         let now = Date()
+        let alertsBeforeApply = WatcherFocusReconciliation.eligibleAlerts(
+            state: state,
+            attentionTracker: attentionTracker
+        )
+        let previouslyAttendingLaneIDs = attentionTracker.activeLaneIDs
+        let previouslyPendingLaneIDs = Set(state.pending.map(\.laneID))
         let eligibleLanes = pollResult.lanes.filter {
             !pollResult.quarantinedLaneIDs.contains($0.id)
         }
@@ -193,16 +271,16 @@ final class WatcherModel: ObservableObject {
         let snapshots = pollResult.lanes.map { lane in
             pollResult.quarantinedLaneIDs.contains(lane.id) ? lane : (enrichedByID[lane.id] ?? lane)
         }
-        workspaces = pollResult.workspaces
-        activityDates = LaneActivityHistory.updatedDates(
+        var proposedState = state
+        var proposedObservationSession = observationSession
+        var proposedAttentionTracker = attentionTracker
+        let existingFocusPlan = pollResult.preEnrichmentFocusPlan
+        let proposedActivityDates = LaneActivityHistory.updatedDates(
             existing: activityDates,
             previous: lanes,
             current: snapshots,
             now: now
         )
-        lanes = snapshots
-        let previouslyAttendingLaneIDs = attentionTracker.activeLaneIDs
-        let previouslyPendingLaneIDs = Set(state.pending.map(\.laneID))
         let liveLaneIDs = Set(pollResult.inventory
             .filter { selection.isSelected($0.info.id) }
             .flatMap(\.lanes)
@@ -211,10 +289,87 @@ final class WatcherModel: ObservableObject {
             snapshots: snapshots,
             quarantinedLaneIDs: pollResult.quarantinedLaneIDs,
             liveLaneIDs: liveLaneIDs,
-            state: &state,
-            observationSession: &observationSession,
-            attentionTracker: &attentionTracker,
+            state: &proposedState,
+            observationSession: &proposedObservationSession,
+            attentionTracker: &proposedAttentionTracker,
             now: now
+        )
+        let alertsAfterApply = WatcherFocusReconciliation.eligibleAlerts(
+            state: proposedState,
+            attentionTracker: proposedAttentionTracker
+        )
+        let newAlerts = WatcherFocusReconciliation.newlyCreatedAlerts(
+            previousAlerts: alertsBeforeApply,
+            currentAlerts: alertsAfterApply
+        )
+        let ordinaryDeliveryState = proposedState
+        let ordinaryDeliveryTracker = proposedAttentionTracker
+        _ = WatcherFocusAcknowledgementApplicator.apply(
+            laneIDs: Set(existingFocusPlan.suppressions.map(\.laneID)),
+            state: &proposedState,
+            attentionTracker: &proposedAttentionTracker
+        )
+        var newFocusPlan = FocusSuppressionPlan.empty
+        if !newAlerts.isEmpty {
+            let client = self.client
+            let observation = await Task.detached {
+                client.acquireFreshFocus()
+            }.value
+            guard !Task.isCancelled else { return lanes }
+            newFocusPlan = WatcherFocusReconciliation.plan(
+                eligibleAlerts: newAlerts,
+                observation: observation,
+                reconciledAt: Date()
+            )
+            _ = WatcherFocusAcknowledgementApplicator.apply(
+                laneIDs: Set(newFocusPlan.suppressions.map(\.laneID)),
+                state: &proposedState,
+                attentionTracker: &proposedAttentionTracker
+            )
+        }
+        var proposedReceiptState: PollReceiptState
+        var pollTransactionCommitted = false
+        do {
+            let committed = try transactionStateStore.commitPoll(
+                from: transactionState,
+                pollKind: pollResult.pollKind,
+                laneMonitorState: proposedState,
+                inputAttentionTracker: proposedAttentionTracker,
+                suppressionPlans: [existingFocusPlan, newFocusPlan]
+            )
+            transactionState = committed
+            proposedReceiptState = committed.pollReceiptState
+            pollTransactionCommitted = true
+        } catch {
+            pollFailed("could not commit focus receipt")
+            // Fail open for delivery. No receipt or sequence is published, and
+            // the unsuppressed alert state is what subsequent persistence uses.
+            proposedState = ordinaryDeliveryState
+            proposedAttentionTracker = ordinaryDeliveryTracker
+            proposedReceiptState = pollReceiptState
+            if let committed = try? transactionStateStore.commitPoll(
+                from: transactionState,
+                pollKind: pollResult.pollKind,
+                laneMonitorState: proposedState,
+                inputAttentionTracker: proposedAttentionTracker,
+                suppressionPlans: []
+            ) {
+                transactionState = committed
+                proposedReceiptState = committed.pollReceiptState
+                pollTransactionCommitted = true
+            }
+        }
+        workspaces = pollResult.workspaces
+        activityDates = proposedActivityDates
+        lanes = snapshots
+        state = proposedState
+        observationSession = proposedObservationSession
+        attentionTracker = proposedAttentionTracker
+        pollReceiptState = proposedReceiptState
+        transactionState = WatcherTransactionState(
+            laneMonitorState: proposedState,
+            inputAttentionTracker: proposedAttentionTracker,
+            pollReceiptState: proposedReceiptState
         )
         attentionLaneIDs = attentionTracker.activeLaneIDs
         removeDeliveredNotifications(
@@ -247,7 +402,7 @@ final class WatcherModel: ObservableObject {
         if isFirstPoll {
             diagnostic("first poll completed: \(selectedCount) workspaces, \(snapshots.count) lanes")
         }
-        persist()
+        persist(commitCanonical: pollTransactionCommitted)
         onUpdate?()
         return snapshots
     }
@@ -295,9 +450,19 @@ final class WatcherModel: ObservableObject {
     }
 
     func acknowledge(_ laneID: String) {
-        state.acknowledge(laneID: laneID)
-        attentionTracker.acknowledge(laneID: laneID)
-        removeDeliveredNotifications(for: [laneID])
+        var proposedState = state
+        var proposedTracker = attentionTracker
+        let acknowledged = WatcherFocusAcknowledgementApplicator.apply(
+            laneIDs: [laneID],
+            state: &proposedState,
+            attentionTracker: &proposedTracker
+        )
+        guard commitAlertState(
+            laneMonitorState: proposedState,
+            inputAttentionTracker: proposedTracker
+        ) else { return }
+        attentionLaneIDs = attentionTracker.activeLaneIDs
+        removeDeliveredNotifications(for: acknowledged)
         pending = state.pending
         persist()
         onUpdate?()
@@ -305,13 +470,19 @@ final class WatcherModel: ObservableObject {
 
     func acknowledgeAll() {
         let laneIDs = Set(state.pending.map(\.laneID)).union(attentionLaneIDs)
-        for item in state.pending {
-            state.acknowledge(laneID: item.laneID)
-        }
-        for laneID in attentionLaneIDs {
-            attentionTracker.acknowledge(laneID: laneID)
-        }
-        removeDeliveredNotifications(for: laneIDs)
+        var proposedState = state
+        var proposedTracker = attentionTracker
+        let acknowledged = WatcherFocusAcknowledgementApplicator.apply(
+            laneIDs: laneIDs,
+            state: &proposedState,
+            attentionTracker: &proposedTracker
+        )
+        guard commitAlertState(
+            laneMonitorState: proposedState,
+            inputAttentionTracker: proposedTracker
+        ) else { return }
+        attentionLaneIDs = attentionTracker.activeLaneIDs
+        removeDeliveredNotifications(for: acknowledged)
         pending = state.pending
         persist()
         onUpdate?()
@@ -421,7 +592,13 @@ final class WatcherModel: ObservableObject {
         }
     }
 
-    private func persist() {
+    private func persist(commitCanonical: Bool = true) {
+        if commitCanonical {
+            guard commitAlertState(
+                laneMonitorState: state,
+                inputAttentionTracker: attentionTracker
+            ) else { return }
+        }
         do {
             try FileManager.default.createDirectory(
                 at: stateURL.deletingLastPathComponent(),
@@ -431,8 +608,31 @@ final class WatcherModel: ObservableObject {
             try data.write(to: stateURL, options: .atomic)
             let activityData = try JSONEncoder().encode(activityDates)
             try activityData.write(to: activityDatesURL, options: .atomic)
+            try InputAttentionStateStore(url: inputAttentionStateURL).save(attentionTracker)
         } catch {
             status = "Could not save watcher state: \(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    private func commitAlertState(
+        laneMonitorState: LaneMonitorState,
+        inputAttentionTracker: InputAttentionTracker
+    ) -> Bool {
+        do {
+            let committed = try transactionStateStore.commitAcknowledgement(
+                from: transactionState,
+                laneMonitorState: laneMonitorState,
+                inputAttentionTracker: inputAttentionTracker
+            )
+            transactionState = committed
+            state = committed.laneMonitorState
+            attentionTracker = committed.inputAttentionTracker
+            pollReceiptState = committed.pollReceiptState
+            return true
+        } catch {
+            status = "Could not save watcher transaction: \(error.localizedDescription)"
+            return false
         }
     }
 }

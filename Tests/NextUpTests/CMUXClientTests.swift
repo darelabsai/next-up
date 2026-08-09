@@ -3,6 +3,218 @@ import Testing
 @testable import NextUp
 @testable import NextUpCore
 
+private let completeActiveTopology = #"{"active":{"window_ref":"window:1","window_id":"WINDOW-UUID","workspace_ref":"workspace:1","workspace_id":"WORKSPACE-UUID","pane_ref":"pane:1","pane_id":"PANE-UUID","surface_ref":"surface:1","surface_id":"SURFACE-UUID"},"windows":[{"ref":"window:1","id":"WINDOW-UUID","workspaces":[{"ref":"workspace:1","id":"WORKSPACE-UUID","title":"Work","panes":[{"ref":"pane:1","id":"PANE-UUID","surfaces":[{"type":"terminal","ref":"surface:1","id":"SURFACE-UUID","title":"Hermes"}]}]}]}]}"#
+
+private final class CMUXAcquisitionSpy: @unchecked Sendable {
+    private let lock = NSLock()
+    private var dates: [Date]
+    private let output: Data
+    private var dateCallCount = 0
+    private(set) var invocations: [[String]] = []
+    private(set) var runnerObservedDateCalls: Int?
+    private(set) var observedDeadline: TimeInterval?
+
+    init(dates: [Date], topology: String = completeActiveTopology) {
+        self.dates = dates
+        self.output = Data(topology.utf8)
+    }
+
+    func now() -> Date {
+        lock.withLock {
+            dateCallCount += 1
+            return dates.removeFirst()
+        }
+    }
+
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        deadline: TimeInterval
+    ) throws -> BoundedProcessResult {
+        lock.withLock {
+            runnerObservedDateCalls = dateCallCount
+            invocations.append(arguments)
+            observedDeadline = deadline
+        }
+        return BoundedProcessResult(
+            standardOutput: output,
+            standardError: Data(),
+            terminationStatus: 0
+        )
+    }
+}
+
+@Test func freshFocusAcquisitionUsesOneTopologyCommandAndStartsTimingBeforeLaunch() throws {
+    let start = Date(timeIntervalSince1970: 100)
+    let finish = start.addingTimeInterval(1.5)
+    let spy = CMUXAcquisitionSpy(dates: [start, finish])
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    let acquisition = client.acquireFreshFocus()
+
+    #expect(acquisition?.snapshot.records.count == 1)
+    #expect(acquisition?.snapshot.activeFocus?.surfaceID == "SURFACE-UUID")
+    #expect(acquisition?.isCMUXFrontmost == true)
+    #expect(acquisition?.startedAt == start)
+    #expect(acquisition?.finishedAt == finish)
+    #expect(acquisition?.duration == 1.5)
+    #expect(spy.runnerObservedDateCalls == 1)
+    #expect(spy.invocations == [["--json", "--id-format", "both", "tree", "--all"]])
+}
+
+@Test func freshFocusAcquisitionRejectsActiveRouteMissingFromFinalInventory() {
+    let mismatched = completeActiveTopology.replacingOccurrences(
+        of: #""surface_id":"SURFACE-UUID""#,
+        with: #""surface_id":"OTHER-SURFACE-UUID""#
+    )
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(
+        dates: [start, start.addingTimeInterval(0.1)],
+        topology: mismatched
+    )
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+    #expect(spy.invocations.count == 1)
+}
+
+@Test func freshFocusAcquisitionRejectsAmbiguousActiveRoute() {
+    let duplicateSurface = #",{"type":"terminal","ref":"surface:1","id":"SURFACE-UUID","title":"Duplicate"}"#
+    let ambiguous = completeActiveTopology.replacingOccurrences(
+        of: #"{"type":"terminal","ref":"surface:1","id":"SURFACE-UUID","title":"Hermes"}"#,
+        with: #"{"type":"terminal","ref":"surface:1","id":"SURFACE-UUID","title":"Hermes"}"# + duplicateSurface
+    )
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(
+        dates: [start, start.addingTimeInterval(0.1)],
+        topology: ambiguous
+    )
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
+@Test func freshFocusAcquisitionAcceptsExactTwoSecondBoundary() {
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start, start.addingTimeInterval(2)])
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus()?.duration == 2)
+    #expect(spy.observedDeadline == 2)
+}
+
+@Test func freshFocusAcquisitionRejectsElapsedTimeOverTwoSeconds() {
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start, start.addingTimeInterval(2.001)])
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+    #expect(spy.observedDeadline == 2)
+}
+
+@Test func freshFocusAcquisitionRejectsSlowTopologyCommand() {
+    let client = CMUXClient(
+        now: { Date(timeIntervalSince1970: 100) },
+        isCMUXFrontmost: { true },
+        processRunner: { _, _, _, deadline in
+            #expect(deadline == 2)
+            throw BoundedProcessRunnerError.timedOut
+        }
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
+@Test func freshFocusAcquisitionRejectsWhenCMUXIsNotFrontmost() {
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start])
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { false },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+    #expect(spy.invocations.count == 1)
+}
+
+@Test func freshFocusAcquisitionRejectsPartialActiveFocus() {
+    let partial = completeActiveTopology.replacingOccurrences(
+        of: #",\"surface_id\":\"SURFACE-UUID\""#.replacingOccurrences(of: "\\", with: ""),
+        with: ""
+    )
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start], topology: partial)
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
+@Test func freshFocusAcquisitionRejectsMissingActiveFocus() {
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start], topology: #"{"windows":[]}"#)
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
+@Test func freshFocusAcquisitionRejectsMalformedTopology() {
+    let start = Date(timeIntervalSince1970: 100)
+    let spy = CMUXAcquisitionSpy(dates: [start], topology: "not-json")
+    let client = CMUXClient(
+        now: spy.now,
+        isCMUXFrontmost: { true },
+        processRunner: spy.run
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
+@Test func freshFocusAcquisitionRejectsFailedTopologyCommand() {
+    let client = CMUXClient(
+        now: { Date(timeIntervalSince1970: 100) },
+        isCMUXFrontmost: { true },
+        processRunner: { _, _, _, _ in
+            BoundedProcessResult(
+                standardOutput: Data(completeActiveTopology.utf8),
+                standardError: Data("failed".utf8),
+                terminationStatus: 1
+            )
+        }
+    )
+
+    #expect(client.acquireFreshFocus() == nil)
+}
+
 @Test func cmuxClientBoundsTopologyCommand() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("next-up-cmux-\(UUID().uuidString)", isDirectory: true)
