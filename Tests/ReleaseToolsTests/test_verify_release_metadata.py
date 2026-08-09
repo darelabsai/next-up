@@ -69,9 +69,12 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
 
         human_path = root / "docs" / "releases" / "README.md"
         human = human_path.read_text(encoding="utf-8")
+        current_row = next(line for line in human.splitlines() if line.startswith("| 1.2.0 |"))
+        fields = current_row.split(" | ")
+        fields[3] = status
         human = human.replace(
-            "| 1.2.0 | 2026-08-08 | 3 | reviewed |",
-            f"| 1.2.0 | 2026-08-08 | 3 | {status} |",
+            current_row,
+            " | ".join(fields),
         )
         human_path.write_text(human, encoding="utf-8")
 
@@ -90,7 +93,7 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
         current = catalog["releases"][0]
         self.assertEqual(current["version"], "1.2.0")
         self.assertEqual(set(current["acceptance_receipts"]), RECEIPT_KEYS)
-        self.assertEqual(set(current["acceptance_receipts"].values()), {False})
+        self.assertEqual(set(current["acceptance_receipts"].values()), {True})
         for historical in catalog["releases"][1:]:
             self.assertIsNone(historical["acceptance_receipts"])
 
@@ -153,7 +156,7 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
 
                 self.assertNotEqual(result.returncode, 0)
 
-    def test_each_pending_record_receipt_is_synchronized(self) -> None:
+    def test_each_passed_record_receipt_is_synchronized(self) -> None:
         labels = (
             "Completion-Focused-Suppression",
             "Input-Required-Focused-Suppression",
@@ -169,17 +172,25 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
                 self.make_repository_copy(root)
                 path = root / "docs/releases/1.2.0.md"
                 text = path.read_text()
-                path.write_text(text.replace(f"{label}: pending", f"{label}: passed"))
+                path.write_text(text.replace(f"{label}: passed", f"{label}: pending"))
 
                 result = self.run_verifier(root)
 
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(f"{label} does not match catalog", result.stderr)
 
-    def test_receipts_are_false_before_live_acceptance_and_true_at_live_acceptance(self) -> None:
-        cases = (("reviewed", True, False), ("live-accepted", True, True))
+    def test_receipts_are_pending_before_live_acceptance_and_passed_at_live_acceptance(self) -> None:
+        cases = (
+            ("reviewed", False, True),
+            ("reviewed", True, False),
+            ("live-accepted", False, False),
+            ("live-accepted", True, True),
+        )
         for status, value, should_pass in cases:
-            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(status=status, receipt_value=value),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 self.make_repository_copy(root)
                 path = root / "docs/releases/catalog.json"
@@ -193,6 +204,13 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
                         artifact_sha256="b" * 64,
                         signing_mode="adhoc",
                         deployment_identity="ai.darelabs.nextup",
+                    )
+                else:
+                    release.update(
+                        source_commit=None,
+                        artifact_sha256=None,
+                        signing_mode=None,
+                        deployment_identity=None,
                     )
                 path.write_text(json.dumps(catalog, indent=2) + "\n")
                 self._synchronize_current_record_and_table(root, release)
@@ -234,29 +252,32 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
         record_path.write_text("\n".join(lines) + "\n")
         table = root / "docs/releases/README.md"
         text = table.read_text()
+        current_row = next(line for line in text.splitlines() if line.startswith("| 1.2.0 |"))
+        fields = current_row.split(" | ")
+        fields[3] = str(release["status"])
         text = text.replace(
-            "| 1.2.0 | 2026-08-08 | 3 | reviewed |",
-            f"| 1.2.0 | 2026-08-08 | 3 | {release['status']} |",
+            current_row,
+            " | ".join(fields),
         )
         table.write_text(text)
 
     def test_every_human_catalog_field_must_match_machine_catalog(self) -> None:
         replacements = {
             "date": (
-                "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
-                "| 1.2.0 | 1999-01-01 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 1999-01-01 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
             ),
             "build": (
-                "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
-                "| 1.2.0 | 2026-08-08 | 999 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 999 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
             ),
             "status": (
-                "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
-                "| 1.2.0 | 2026-08-08 | 3 | deployed | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | deployed | [Next Up 1.2.0](1.2.0.md) |",
             ),
             "record": (
-                "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |",
-                "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.0.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |",
+                "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.0.0.md) |",
             ),
         }
         for field, (old, new) in replacements.items():
@@ -281,7 +302,7 @@ class VerifyReleaseMetadataTests(unittest.TestCase):
             "malformed": lambda row: row.replace(" | 3 |", " | three |"),
             "duplicate": lambda row: f"{row}\n{row}",
         }
-        row = "| 1.2.0 | 2026-08-08 | 3 | reviewed | [Next Up 1.2.0](1.2.0.md) |"
+        row = "| 1.2.0 | 2026-08-09 | 3 | live-accepted | [Next Up 1.2.0](1.2.0.md) |"
         for mutation, transform in mutations.items():
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)

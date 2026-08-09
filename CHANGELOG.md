@@ -2,7 +2,7 @@
 
 All notable Next Up releases are recorded here. Detailed implementation, verification, deployment, and acceptance receipts live in `docs/releases/`.
 
-## [1.2.0] - 2026-08-08
+## [1.2.0] - 2026-08-09
 
 ### Candidate scope
 
@@ -12,8 +12,9 @@ All notable Next Up releases are recorded here. Detailed implementation, verific
 
 ### Release state
 
-- Reviewed source candidate only. Source verification, packaging, deployment, and all seven exact 1.2 cases—including owner native-card-removal verification and cleanup—remain pending.
-- The candidate does not claim universal Hermes event coverage or Hermes-only notification gating.
+- Live-accepted build 3 was packaged from accepted remote `main`, transactionally installed with a verified 1.1.0 rollback target, and exercised through all five genuine organic alert lifecycles.
+- Exact focused suppression, later-focus native-card removal, notification-body route plus CMUX foregrounding, owner verification, and cleanup were accepted independently.
+- The release does not claim universal Hermes event coverage or Hermes-only notification gating.
 
 ## [1.1.0] - 2026-08-08
 

@@ -3,25 +3,25 @@
   "releases": [
     {
       "version": "1.2.0",
-      "date": "2026-08-08",
+      "date": "2026-08-09",
       "build": 3,
-      "status": "reviewed",
-      "source_commit": null,
-      "artifact_sha256": null,
-      "signing_mode": null,
-      "deployment_identity": null,
+      "status": "live-accepted",
+      "source_commit": "256f0117a70b0fb293df8cfd3ee53065c0b9374a",
+      "artifact_sha256": "93d9d2365e1651b27910a8c254c6061660375fbbf1247cb3b910801c2775148e",
+      "signing_mode": "adhoc",
+      "deployment_identity": "ai.darelabs.nextup",
       "predecessor": "1.1.0",
       "rollback_target": "1.1.0",
       "historical_bundle_version": null,
       "historical_bundle_build": null,
       "acceptance_receipts": {
-        "completion_focused_suppression": false,
-        "input_required_focused_suppression": false,
-        "completion_later_focus_auto_clear": false,
-        "input_required_later_focus_auto_clear": false,
-        "body_click_route_and_foreground": false,
-        "owner_native_card_removal_verification": false,
-        "cleanup": false
+        "completion_focused_suppression": true,
+        "input_required_focused_suppression": true,
+        "completion_later_focus_auto_clear": true,
+        "input_required_later_focus_auto_clear": true,
+        "body_click_route_and_foreground": true,
+        "owner_native_card_removal_verification": true,
+        "cleanup": true
       },
       "record": "docs/releases/1.2.0.md"
     },

@@ -10,11 +10,11 @@ The app is observational while monitoring. It reads CMUX topology and visible te
 
 The deployed version monitors CMUX-visible lanes on this MacBook Air plus exact retained-SSH Mac Mini surfaces. It is not yet a universal inventory of every Hermes CLI, gateway, cron, or subagent run; that proposed future direction is documented separately below.
 
-## 1.2 candidate scope
+## 1.2 release
 
-Version 1.2.0 build 3 is a reviewed candidate, not a deployed or live-accepted release. Its closed acceptance contract separately covers focused suppression and later-focus auto-clear for completion and input-required alerts, body-click route plus foreground, owner verification that native cards are removed, and cleanup. Clicking a notification body foregrounds CMUX and navigates using freshly revalidated exact identity.
+Version 1.2.0 build 3 is live-accepted. Its closed acceptance record separately covers focused suppression and later-focus auto-clear for completion and input-required alerts, body-click route plus foreground, owner verification that native cards are removed, and cleanup. Clicking a notification body foregrounds CMUX and navigates using freshly revalidated exact identity.
 
-Those statements define candidate behavior to verify. They do not claim measured event latency, universal live acceptance, Hermes-only gating, source verification, artifact identity, or deployment; every exact 1.2 interaction receipt remains pending in the release record.
+The release record ties the installed artifact to accepted source and records every exact 1.2 interaction receipt as passed. This does not claim measured event latency, universal Hermes event coverage, or Hermes-only gating.
 
 ## Installed behavior
 
