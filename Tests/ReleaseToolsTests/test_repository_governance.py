@@ -27,7 +27,7 @@ class RepositoryGovernanceTests(unittest.TestCase):
         owners = (ROOT / ".github/CODEOWNERS").read_text()
         self.assertIn("security advisory", security)
         self.assertIn("do not", security)
-        self.assertIn("@shahhaard47", owners)
+        self.assertIn("@darelabsai", owners)
 
     def test_contribution_contract_is_explicit_without_protection_claim(self) -> None:
         text = (ROOT / "CONTRIBUTING.md").read_text().lower()

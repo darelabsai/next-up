@@ -2,6 +2,10 @@
 
 A local macOS menu-bar attention monitor for Hermes agents running in CMUX.
 
+Canonical source repository: [darelabsai/next-up](https://github.com/darelabsai/next-up).
+
+This public repository preserves the existing 1.2.0 baseline. Publication does not imply that general-purpose installation cleanup, signing/notarization, or broader agent support is complete. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
+
 ## What it is for
 
 Next Up lets you step away from active agent sessions without repeatedly checking every terminal. It watches selected CMUX workspaces, shows which lanes are working or waiting, and calls attention to the two moments that require you: an agent needs input, or a previously working agent has finished.
