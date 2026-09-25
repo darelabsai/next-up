@@ -3,6 +3,15 @@ import Testing
 import Darwin
 @testable import NextUp
 
+private final class ProcessFixtureBundle: NSObject {}
+
+// SwiftPM builds this test-only executable beside the test bundle. No Python
+// startup, imports, or runtime compilation consume the runner's deadline.
+private var processFixtureURL: URL {
+    Bundle(for: ProcessFixtureBundle.self).bundleURL
+        .deletingLastPathComponent().appendingPathComponent("ProcessRunnerFixture")
+}
+
 private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [BoundedProcessRunner.StdinWriterLifecycle] = []
@@ -47,17 +56,11 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
     let pidFile = FileManager.default.temporaryDirectory
         .appendingPathComponent("next-up-runner-\(UUID().uuidString).pid")
     defer { try? FileManager.default.removeItem(at: pidFile) }
-    let source = """
-    import os, signal, time
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    open(\(String(reflecting: pidFile.path)), 'w').write(str(os.getpid()))
-    time.sleep(10)
-    """
 
     #expect(throws: BoundedProcessRunnerError.timedOut) {
         _ = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: ["-c", source],
+            executableURL: processFixtureURL,
+            arguments: ["ignore-term", pidFile.path],
             deadline: 1
         )
     }
@@ -70,20 +73,20 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 
 @Test func boundedProcessRunnerCapsRetainedStandardErrorWhileDraining() throws {
     let result = try BoundedProcessRunner().run(
-        executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-        arguments: ["-c", "import sys; sys.stderr.write('x' * 100_000)"],
+        executableURL: processFixtureURL,
+        arguments: ["stderr"],
         deadline: 1
     )
 
     #expect(result.terminationStatus == 0)
-    #expect(result.standardError.count == 16_384)
+    #expect(result.standardError == Data(repeating: 0x78, count: 16_384))
 }
 
 @Test func boundedProcessRunnerFailsClosedAfterDrainingOversizedStandardOutput() {
     #expect(throws: BoundedProcessRunnerError.standardOutputExceededLimit) {
         _ = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: ["-c", "import sys; sys.stdout.write('x' * 100_000)"],
+            executableURL: processFixtureURL,
+            arguments: ["stdout"],
             deadline: 1,
             standardOutputLimit: 16_384
         )
@@ -108,12 +111,8 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 
     #expect(throws: BoundedProcessRunnerError.timedOut) {
         _ = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: [
-                "-c",
-                "import os, time; pid=os.fork(); "
-                    + "(os.setsid(), time.sleep(2)) if pid == 0 else time.sleep(2)",
-            ],
+            executableURL: processFixtureURL,
+            arguments: ["detached-timeout"],
             deadline: 0.05
         )
     }
@@ -126,12 +125,8 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 
     #expect(throws: BoundedProcessRunnerError.outputDrainTimedOut) {
         _ = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: [
-                "-c",
-                "import os, time; pid=os.fork(); "
-                    + "(os.setsid(), time.sleep(2)) if pid == 0 else None",
-            ],
+            executableURL: processFixtureURL,
+            arguments: ["detached-exit"],
             deadline: 1
         )
     }
@@ -141,11 +136,8 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 
 @Test func boundedProcessRunnerDrainsSimultaneousOutputBeyondPipeCapacity() throws {
     let result = try BoundedProcessRunner().run(
-        executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-        arguments: [
-            "-c",
-            "import os, threading; a=threading.Thread(target=lambda: os.write(1,b'o'*200000)); b=threading.Thread(target=lambda: os.write(2,b'e'*200000)); a.start(); b.start(); a.join(); b.join()",
-        ],
+        executableURL: processFixtureURL,
+        arguments: ["both"],
         deadline: 2
     )
 
@@ -157,15 +149,8 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 @Test func boundedProcessRunnerWritesStdinWhileConcurrentlyDrainingBothOutputs() throws {
     let input = Data(repeating: 0x69, count: 200_000)
     let result = try BoundedProcessRunner().run(
-        executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-        arguments: [
-            "-c",
-            "import os, sys, threading; "
-                + "a=threading.Thread(target=lambda: os.write(1,b'o'*200000)); "
-                + "b=threading.Thread(target=lambda: os.write(2,b'e'*200000)); "
-                + "a.start(); b.start(); data=sys.stdin.buffer.read(); a.join(); b.join(); "
-                + "os.write(1, ('\\n%d' % len(data)).encode())",
-        ],
+        executableURL: processFixtureURL,
+        arguments: ["stdin-and-both"],
         standardInput: input,
         deadline: 2
     )
@@ -178,23 +163,11 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
 @Test func boundedProcessRunnerJoinsCanceledWriterWhenDescendantInheritsStdin() throws {
     let lifecycle = StdinWriterLifecycleRecorder()
     let runner = BoundedProcessRunner(stdinWriterLifecycle: lifecycle.record)
-    let source = """
-    import os, time
-    pid = os.fork()
-    if pid == 0:
-        os.setsid()
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 1)
-        os.dup2(devnull, 2)
-        time.sleep(2)
-        os._exit(0)
-    time.sleep(0.1)
-    """
     let started = Date()
 
     let result = try runner.run(
-        executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-        arguments: ["-c", source],
+        executableURL: processFixtureURL,
+        arguments: ["inherited-stdin"],
         standardInput: Data(repeating: 0x69, count: 4_000_000),
         deadline: 1
     )
@@ -208,16 +181,11 @@ private final class StdinWriterLifecycleRecorder: @unchecked Sendable {
     let pidFile = FileManager.default.temporaryDirectory
         .appendingPathComponent("next-up-runner-ordinary-\(UUID().uuidString).pid")
     defer { try? FileManager.default.removeItem(at: pidFile) }
-    let source = """
-    import os, time
-    open(\(String(reflecting: pidFile.path)), 'w').write(str(os.getpid()))
-    time.sleep(10)
-    """
 
     #expect(throws: BoundedProcessRunnerError.timedOut) {
         _ = try BoundedProcessRunner().run(
-            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            arguments: ["-c", source],
+            executableURL: processFixtureURL,
+            arguments: ["ordinary-timeout", pidFile.path],
             deadline: 0.15
         )
     }
