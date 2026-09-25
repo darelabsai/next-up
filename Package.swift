@@ -16,6 +16,11 @@ let package = Package(
             dependencies: ["NextUpCore"],
             resources: [.copy("Fixtures")]
         ),
-        .testTarget(name: "NextUpTests", dependencies: ["NextUp", "NextUpCore"]),
+        // Build the process fixture before tests, not inside a runner deadline.
+        .executableTarget(name: "ProcessRunnerFixture", path: "Tests/ProcessRunnerFixture"),
+        .testTarget(
+            name: "NextUpTests",
+            dependencies: ["NextUp", "NextUpCore", "ProcessRunnerFixture"]
+        ),
     ]
 )

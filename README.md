@@ -2,6 +2,12 @@
 
 A local macOS menu-bar attention monitor for Hermes agents running in CMUX.
 
+Canonical source repository: [darelabsai/next-up](https://github.com/darelabsai/next-up).
+
+This public repository preserves the existing 1.2.0 baseline. Publication does not imply that general-purpose installation cleanup, signing/notarization, or broader agent support is complete. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
+
+Start with the [setup guide](docs/setup.md) and [limited release contract](docs/release-scope.md). This app reads visible terminal content; it is not a metadata-only observer. Public source availability is not a signed/notarized release.
+
 ## What it is for
 
 Next Up lets you step away from active agent sessions without repeatedly checking every terminal. It watches selected CMUX workspaces, shows which lanes are working or waiting, and calls attention to the two moments that require you: an agent needs input, or a previously working agent has finished.
@@ -56,10 +62,10 @@ On startup it rediscovers CMUX workspaces and resumes the saved selection policy
 ## Build and test
 
 ```bash
-swift test
-python3 -B -m unittest -v Tests.ReleaseToolsTests.test_package_local_app
+swift test --no-parallel
+python3 -B -m unittest discover -s Tests/ReleaseToolsTests -v
 python3 -B scripts/verify-release-metadata.py
-swift run NextUp --probe
+python3 -B scripts/verify-repository-tree.py --history
 swift run NextUp --announcement-probe
 swift build -c release -Xswiftc -warnings-as-errors
 scripts/package-local-app.sh --ad-hoc-sign /tmp/Next-Up-candidate.app
@@ -78,7 +84,9 @@ The live probe prints monitored lanes as JSON. The announcement probe prints det
 
 ## Design and implementation history
 
-The durable release catalog is [`docs/releases/README.md`](docs/releases/README.md), backed by machine-validated [`docs/releases/catalog.json`](docs/releases/catalog.json), per-release verification records, and [`CHANGELOG.md`](CHANGELOG.md), so release truth does not depend on raw Git history. The accepted reliability, session-grounding, notification, voice, UI, and verification requirements are recorded in [`docs/plans/2026-08-05-next-up-reliability-and-session-grounding.md`](docs/plans/2026-08-05-next-up-reliability-and-session-grounding.md). The investigated input-recognition incident and its unresolved sampling/classifier uncertainty are documented in [`docs/research/2026-08-07-hermes-input-state-recognition.md`](docs/research/2026-08-07-hermes-input-state-recognition.md); the independently approved implementation contract is [`docs/plans/2026-08-07-generalize-hermes-input-recognition.md`](docs/plans/2026-08-07-generalize-hermes-input-recognition.md). The layered CMUX, retained-screen, SSH, and ICMP evidence from an observed Mac Mini outage is recorded in [`docs/research/2026-08-08-mac-mini-unreachable-observation.md`](docs/research/2026-08-08-mac-mini-unreachable-observation.md), with a machine-readable companion at [`docs/research/2026-08-08-mac-mini-unreachable-evidence.json`](docs/research/2026-08-08-mac-mini-unreachable-evidence.json). A proposed, not-yet-authorized migration from CMUX-only inference to a universal event-driven Hermes attention ledger is preserved separately in [`docs/plans/2026-08-06-universal-hermes-attention-backend.md`](docs/plans/2026-08-06-universal-hermes-attention-backend.md).
+The durable release catalog is [`docs/releases/README.md`](docs/releases/README.md), backed by machine-validated [`docs/releases/catalog.json`](docs/releases/catalog.json), per-release verification records, and [`CHANGELOG.md`](CHANGELOG.md). Historical acceptance applies only to the recorded artifact and environment.
+
+The current [limited release contract](docs/release-scope.md) preserves the cmux + Hermes `--tui` baseline. Private research and internal plans are intentionally not included in this public repository. No universal agent backend or new CLI integration is part of this release preparation.
 
 ## VoiceBox
 
